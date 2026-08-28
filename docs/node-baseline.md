@@ -13,17 +13,17 @@ scripts/benchmark-node.sh
 scripts/capture-telemetry.sh 5 60
 ```
 
-The collectors use established Linux tooling where available: [`lshw`](https://github.com/lyonel/lshw) for hardware inventory, [`lm-sensors`](https://github.com/lm-sensors/lm-sensors) for sensor readings, and NVIDIA's `nvidia-smi`/CUDA tooling for GPU state. Missing optional tools are represented by missing output files rather than fabricated values.
+The collectors use established Linux tooling where available: [`lshw`](https://github.com/lyonel/lshw) for hardware inventory, [`lm-sensors`](https://github.com/lm-sensors/lm-sensors) for sensor readings, and NVIDIA's `nvidia-smi`/CUDA tooling for GPU state. Optional inventory files may be absent when their tools are unavailable. The telemetry collector always creates its CSV; when `nvidia-smi` is unavailable, it leaves the GPU fields blank.
 
 The inventory collector records storage topology through `lsblk`. The provenance manifest is a checked-in schema/template; update runtime fields only from a collected report.
 
 ## Verification contract
 
-The verifier checks Fedora metadata, Python, NVIDIA visibility, CUDA compiler availability, and block-device inventory. A passing result means those commands returned successfully on that run; it does not claim that a training workload, benchmark, or hosted CI job is production-ready.
+The verifier sources `/etc/os-release` and requires `ID=fedora`; it also checks Python, NVIDIA visibility, CUDA compiler availability, and block-device inventory. A passing result means those commands returned successfully on that run; it does not claim that a training workload, benchmark, or hosted CI job is production-ready.
 
 ## Benchmark interpretation
 
-For repeatable CPU and memory stress testing, use [`stress-ng`](https://github.com/ColinIanKing/stress-ng). For controlled storage tests, use [`fio`](https://github.com/axboe/fio) against an explicitly selected test directory or device. The included benchmark script is a safe inventory and temporary-filesystem smoke test, not a replacement for workload-specific benchmarks.
+For repeatable CPU and memory stress testing, use [`stress-ng`](https://github.com/ColinIanKing/stress-ng). For controlled storage tests, use [`fio`](https://github.com/axboe/fio) against an explicitly selected test directory or device. The included benchmark script records each inventory command's status, writes and removes a 1 GiB temporary file for its filesystem smoke test, and exits nonzero if collection or the write fails. It is not a replacement for workload-specific benchmarks.
 
 Baseline files must include their UTC collection time and command family. Compare like-for-like runs: power policy, driver/runtime versions, workload size, thermal state, and background processes can materially change results. Never replace a failed or surprising measurement with a specification-sheet value.
 

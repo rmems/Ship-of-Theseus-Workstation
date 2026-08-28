@@ -15,7 +15,12 @@ lsblk -J -o NAME,MODEL,SIZE,TYPE,FSTYPE,MOUNTPOINTS > "$out/lsblk.json"
 
 if command -v lshw >/dev/null 2>&1; then
   if lshw -json > "$out/lshw.json" 2>/dev/null; then :; else
-    sudo -n lshw -json > "$out/lshw.json" 2>/dev/null || true
+    rm -f "$out/lshw.json"
+    if ! sudo -n lshw -json 2>/dev/null | tee "$out/lshw.json" >/dev/null; then
+      rm -f "$out/lshw.json"
+      printf 'Unable to collect lshw inventory with normal or privileged access.\n' >&2
+      exit 1
+    fi
   fi
 fi
 
