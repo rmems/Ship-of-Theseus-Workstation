@@ -7,7 +7,7 @@ end=$((SECONDS + duration))
 while (( SECONDS < end )); do
   timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   gpu=$(nvidia-smi --query-gpu=temperature.gpu,power.draw,utilization.gpu,memory.used --format=csv,noheader,nounits 2>/dev/null || printf ',,,')
-  cpu=$(sensors 2>/dev/null | awk '/Tctl:|Package id 0:/{gsub(/[+°C]/,"",$2); print $2; exit}')
+  cpu=$(sensors 2>/dev/null | awk '/Tctl:|Package id 0:/{gsub(/[+°C]/,"",$2); print $2; exit}' || true)
   printf '%s,%s,%s\n' "$timestamp" "$gpu" "${cpu:-}" >> "$out"
   sleep "$interval"
 done

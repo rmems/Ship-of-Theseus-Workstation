@@ -10,5 +10,5 @@ mkdir -p "$(dirname "$out")"
   echo '## Storage'; lsblk -o NAME,MODEL,SIZE,TYPE,FSTYPE,MOUNTPOINTS 2>/dev/null || true
   echo '## Temporary filesystem write smoke test'
   tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT
-  dd if=/dev/zero of="$tmp" bs=1M count=1024 conv=fdatasync status=progress 2>&1 || true
+  dd if=/dev/zero of="$tmp" bs=1M count=1024 conv=fdatasync status=progress 2>&1
 } | tee "$out"

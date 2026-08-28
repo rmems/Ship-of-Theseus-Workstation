@@ -10,6 +10,7 @@ cat /etc/os-release > "$out/os-release.txt"
 uname -a > "$out/uname.txt"
 lscpu > "$out/lscpu.txt"
 free -h > "$out/memory.txt"
+python3 --version > "$out/python-version.txt"
 lsblk -J -o NAME,MODEL,SIZE,TYPE,FSTYPE,MOUNTPOINTS > "$out/lsblk.json"
 
 if command -v lshw >/dev/null 2>&1; then
