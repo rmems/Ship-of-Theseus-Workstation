@@ -52,9 +52,12 @@ This machine is especially important to my **early-career independent portfolio*
 | :--- | :--- | :--- |
 | **CPU** | AMD Ryzen 9 9950X (16 cores) | Compilation, simulation, data processing, multi-process agent workloads |
 | **GPU** | ASUS ProArt GeForce RTX 5080 OC, 16 GB VRAM | Local ML, CUDA experimentation, GPU-accelerated research |
-| **Memory** | 64 GB DDR5-6000 | Dataset processing, parallel development workloads, simulation |
+| **Memory** | 64 GB (2 × 32 GB) G.SKILL Trident Z5 Neo RGB DDR5-6000, CL30-40-40-96, AMD EXPO | Dataset processing, parallel development workloads, simulation, local model workflows |
 | **Primary storage** | 2 TB Crucial T700 PCIe 5.0 NVMe | High-throughput working storage, models, build artifacts, experiment data |
+| **Backup storage** | Fanxiang PCIe 4.0 NVMe SSD | Secondary/backup storage for research data, artifacts, and working sets |
 | **Operating system** | Fedora Linux | Primary research, development, automation, and self-hosted CI environment |
+
+**Installed memory kit:** G.SKILL `F5-6000J3040G32GX2-TZ5NR` — 64 GB total (32 GB × 2), DDR5-6000, CL30-40-40-96, 1.40 V, AMD EXPO.
 
 The machine is intentionally treated as an evolving research node rather than a fixed build. Hardware, drivers, runtimes, and research workloads may change over time—the name **Ship of Theseus** reflects that continuous replacement and refinement.
 
@@ -95,7 +98,7 @@ This repository is the **infrastructure record** for the node. As the environmen
 - experiment-environment provenance and reproducibility notes;
 - documented failure modes, upgrades, and migration history.
 
-The repository should stay narrow: application-specific code belongs in its own project. Ship-of-Theseus-HPC documents the **platform those projects run on**.
+The repository should stay narrow: application-specific code belongs in its own project. Ship-of-Theseus-Workstation documents the **platform those projects run on**.
 
 ## 📐 Engineering principles
 
@@ -109,7 +112,7 @@ The repository should stay narrow: application-specific code belongs in its own 
 ## 🗺️ Planned structure
 
 ```text
-Ship-of-Theseus-HPC/
+Ship-of-Theseus-Workstation/
 ├── README.md
 ├── assets/
 ├── docs/          # architecture, GPU stack, CI, reproducibility
