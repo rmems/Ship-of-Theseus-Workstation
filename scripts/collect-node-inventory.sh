@@ -50,7 +50,15 @@ if command -v nvidia-smi >/dev/null 2>&1; then
   fi
 fi
 
-if command -v nvcc >/dev/null 2>&1; then nvcc --version > "$out/nvcc.txt"; fi
+if command -v nvcc >/dev/null 2>&1; then
+  nvcc_tmp="$out/nvcc.txt.tmp"
+  if nvcc --version > "$nvcc_tmp" 2>/dev/null; then
+    mv "$nvcc_tmp" "$out/nvcc.txt"
+  else
+    rm -f "$nvcc_tmp" "$out/nvcc.txt"
+    printf 'Skipping nvcc inventory: CUDA compiler query failed.\n' >&2
+  fi
+fi
 if command -v sensors >/dev/null 2>&1; then
   sensors_tmp="$out/sensors.txt.tmp"
   if sensors > "$sensors_tmp" 2>/dev/null; then
