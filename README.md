@@ -4,20 +4,47 @@
   <img src="assets/ship_of_theseus.png" width="800" alt="Ship of Theseus research workstation">
 </p>
 
-**Ship of Theseus** is my single-node AI/HPC research workstation and self-hosted engineering environment. This repository documents the machine as infrastructure: the hardware, software stack, workloads, reproducibility practices, and evolution of the node that supports my independent AI/ML systems research.
+**Ship of Theseus** is my single-node AI/HPC research workstation and self-hosted engineering environment. It is both a physical machine and a record of a larger transition: from an abandoned plan to rebuild an early-2000s PC, to a fresh Electrical Engineering start, and ultimately to the AI Engineering path that now defines my independent work.
+
+This repository documents the machine as infrastructure: the hardware, software stack, workloads, reproducibility practices, and evolution of the node that supports my early-career AI/ML systems and agentic-systems research.
 
 Rather than treating a high-end workstation as a project by itself, the goal is to make the environment **inspectable, reproducible, benchmarkable, and useful as engineering infrastructure**.
+
+## 🏛️ Why “Ship of Theseus”
+
+The name predates the current workstation.
+
+My original build idea was to take an **early-2000s PC** and progressively rebuild it into a modern system while preserving the identity of the original machine. After researching the platform, disassembling hardware, and working through what would actually need to be replaced, I reached the obvious Ship-of-Theseus problem: almost every meaningful component would have to change.
+
+At that point, buying a complete modern case and building the system properly from the ground up made more engineering sense than preserving the old chassis for its own sake.
+
+That physical rebuild ended up mirroring a larger change in direction.
+
+I originally assembled this system as part of a fresh start in **Electrical Engineering at Texas State University**. After a difficult start there—particularly administrative friction that made the path a poor fit—I reconsidered what work I was actually most motivated to pursue. The answer was not traditional EE by itself. It was the intersection I had already been gravitating toward: **AI, machine learning, high-performance systems, agentic software, and brain-inspired computing**.
+
+I am now pursuing **AI Engineering at Western Governors University (WGU)**, and Ship of Theseus has become the primary local research node behind that new direction.
+
+So the name now works at several levels:
+
+- the original early-2000s-PC rebuild concept;
+- the modern workstation that replaced that plan;
+- the continuous replacement and refinement of the machine itself;
+- and the transition from one engineering path into a more focused AI/ML systems trajectory.
+
+The system changed. The purpose became clearer.
 
 ## 🎯 What this node is for
 
 Ship of Theseus is used as a local execution and validation platform for work spanning:
 
 - **AI/ML systems engineering** — local model experimentation, fine-tuning workflows, inference, evaluation, and synthetic-data pipelines.
+- **Agentic systems** — coding-agent workflows, repository-scale experiments, multi-agent engineering processes, automated review, and trajectory generation.
 - **GPU computing** — CUDA/CUDA-adjacent experimentation, profiling, kernel validation, and Blackwell-specific performance work.
 - **Neuromorphic computing** — spiking-neural-network simulation, hybrid ANN/SNN experiments, telemetry-driven research, and model conversion workflows.
 - **FPGA / RTL development** — SystemVerilog simulation and self-hosted validation for hardware-oriented projects.
-- **Agentic software engineering** — local coding-agent workflows, repository-scale experiments, automated testing, and dataset generation from engineering trajectories.
 - **Self-hosted CI** — GitHub Actions workloads that benefit from access to the workstation's GPU, Linux environment, or locally installed engineering toolchains.
+
+This machine is especially important to my **early-career independent portfolio** because it gives me a real environment in which to build, test, measure, fail, iterate, and produce artifacts that go beyond coursework.
 
 ## 🖥️ Node architecture
 
@@ -38,6 +65,10 @@ This node supports multiple repositories and experimental pipelines across my Gi
 ### Synthetic-data and model-training infrastructure
 
 Repository-scale agent trajectories, validation artifacts, synthetic software-engineering data, and downstream local training/evaluation workflows.
+
+### Agentic systems engineering
+
+Coding-agent orchestration, issue-to-PR workflows, review loops, repository-scale automation, tool-use experiments, and engineering-trajectory capture for later evaluation or training.
 
 ### Neuromorphic and hybrid AI systems
 
@@ -73,6 +104,7 @@ The repository should stay narrow: application-specific code belongs in its own 
 3. **Infrastructure as an engineering artifact.** CI, drivers, runtimes, services, and observability deserve versioned documentation.
 4. **Project isolation.** Research code remains in its canonical repository; this repo owns node-level concerns.
 5. **Evolution is expected.** Changes to the machine should leave an auditable trail instead of silently replacing the previous state.
+6. **Independent work should create evidence.** The node exists to produce reproducible experiments, engineering artifacts, datasets, benchmarks, and validated systems—not merely to host tools.
 
 ## 🗺️ Planned structure
 
@@ -90,10 +122,10 @@ These directories represent the intended infrastructure layout and will be added
 
 ## 🤖 AI collaboration attribution
 
-The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Sol by OpenAI**. GPT-5.6 Sol contributed repository-scope analysis, information architecture, and README drafting/refinement; final project direction and repository ownership remain with **rmems**.
+The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Sol by OpenAI**. GPT-5.6 Sol contributed repository-scope analysis, information architecture, README drafting/refinement, and integration of the project's origin story into the current infrastructure narrative; final project direction and repository ownership remain with **rmems**.
 
 AI-assisted contributions are attributed explicitly when they materially shape repository documentation or engineering decisions.
 
 ---
 
-**Status:** Active research infrastructure. Documentation will evolve alongside the node and the workloads it supports.
+**Status:** Active research infrastructure for independent AI/ML systems, agentic systems, neuromorphic computing, GPU experimentation, and self-hosted engineering workflows.
