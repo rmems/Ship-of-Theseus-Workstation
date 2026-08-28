@@ -1,0 +1,21 @@
+scripts/collect-node-inventory.sh
+  s_7393744b94551d::t_3b79fe6237cd6e 17-24,29-40
+scripts/capture-telemetry.sh
+  s_7393744b94551d::t_3b79fe6237cd6e 26-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "0b5e69be4ecc5fff0622f664706397e64f42c1ec",
+  "prompts": {},
+  "sessions": {
+    "s_7393744b94551d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04851-d14c-7dd2-bd41-e3a70e2ac0b7",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
