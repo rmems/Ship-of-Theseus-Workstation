@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 set -uo pipefail
-out=${1:-benchmarks/benchmark-$(date -u +%Y%m%dT%H%M%SZ).txt}
+out=${1:-benchmarks/benchmark-$(date -u +%Y%m%dT%H%M%SZ)-$$.txt}
 mkdir -p "$(dirname "$out")" || exit 1
+if ! (set -o noclobber; : > "$out") 2>/dev/null; then
+  printf 'Refusing to reuse benchmark output path: %s\n' "$out" >&2
+  exit 2
+fi
 
 failures=0
 run_and_record() {
@@ -18,7 +22,8 @@ run_and_record() {
 }
 
 {
-  printf 'collected_at_utc=%s\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'collected_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'command_family=node-benchmark-smoke\n\n'
   echo '## CPU'; run_and_record lscpu lscpu
   echo '## Memory'; run_and_record free free -h
   echo '## GPU'; run_and_record nvidia-smi nvidia-smi

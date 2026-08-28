@@ -15,8 +15,16 @@ The workstation can provide a Fedora/Linux runner for GPU, CUDA, FPGA/RTL, and l
 
 If a runner becomes unhealthy, remove it from service, preserve the job URL and baseline report, and inspect disk, temperature, and GPU health. Then use this approved bootstrap procedure:
 
-1. In the target repository, open **Settings > Actions > Runners**. If the local installation is accessible, stop and uninstall its service, then run GitHub's displayed removal command with a newly generated removal token. If the installation is inaccessible, force-remove the stale registration in GitHub.
-2. Select **New self-hosted runner**, choose Linux and `x64`, and run the displayed download, integrity-check, and extraction commands exactly as generated. Before entering the generated `./config.sh --token` command, start a protected Bash subshell with `env HISTFILE=/dev/null bash --noprofile --norc +o history +o xtrace`; paste and run the generated registration command only inside that subshell, then run `exit` to return to the operator shell with its prior history and tracing settings unchanged. Registration tokens are short-lived; never save one in this repository or in shell history.
+1. In the target repository, open **Settings > Actions > Runners**. If the local installation is accessible, stop and uninstall its service. Before entering GitHub's generated removal command with its short-lived token, open a protected Bash subshell:
+
+   ```bash
+   env HISTFILE=/dev/null bash --noprofile --norc
+   set +o history
+   set +o xtrace
+   ```
+
+   Paste and run the generated `./config.sh remove --token ...` command only in that subshell, then run `exit`. If the installation is inaccessible, force-remove the stale registration in GitHub.
+2. Select **New self-hosted runner**, choose Linux and `x64`, and run the displayed download, integrity-check, and extraction commands exactly as generated. Open the same protected Bash subshell before entering the generated `./config.sh --token ...` registration command; paste and run it only there, then run `exit` to restore the operator shell with its history and tracing settings unchanged. Registration tokens are short-lived; never save either token in this repository or in shell history.
 3. Assign only verified labels from the operating rules above. After registration, follow GitHub's Linux service instructions to install and start the runner service.
 4. Confirm that GitHub reports the runner as idle, run an approved smoke workflow, and preserve its job URL plus a fresh node verification report.
 

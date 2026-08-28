@@ -152,6 +152,10 @@ The August 2026 repositioning of this repository—from a general workstation/po
 
 AI-assisted contributions are attributed explicitly when they materially shape repository documentation or engineering decisions.
 
+## 📄 License and third-party tools
+
+Original scripts and documentation are available under the [MIT License](LICENSE). Workstation photographs and other visual assets are excluded; see [assets licensing](assets/LICENSE.md). The collectors invoke, but do not vendor, external tooling; its attribution and upstream licensing are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ---
 
 **Status:** Active research infrastructure for independent AI/ML systems, agentic systems, neuromorphic computing, GPU experimentation, and self-hosted engineering workflows.
