@@ -23,6 +23,9 @@ while (( SECONDS < end )); do
   while IFS= read -r gpu_row; do
     printf '%s,%s,%s\n' "$timestamp" "$gpu_row" "${cpu:-}" >> "$out"
   done <<< "$gpu"
-  sleep "$interval"
+  remaining=$((end - SECONDS))
+  (( remaining <= 0 )) && break
+  sleep_for=$(( interval < remaining ? interval : remaining ))
+  sleep "$sleep_for"
 done
 printf '%s\n' "$out"

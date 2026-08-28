@@ -14,19 +14,30 @@ python3 --version > "$out/python-version.txt"
 lsblk -J -o NAME,MODEL,SIZE,TYPE,FSTYPE,MOUNTPOINTS > "$out/lsblk.json"
 
 if command -v lshw >/dev/null 2>&1; then
-  if lshw -json > "$out/lshw.json" 2>/dev/null; then :; else
-    rm -f "$out/lshw.json"
-    if ! sudo -n lshw -json 2>/dev/null | tee "$out/lshw.json" >/dev/null; then
-      rm -f "$out/lshw.json"
-      printf 'Unable to collect lshw inventory with normal or privileged access.\n' >&2
-      exit 1
-    fi
+  lshw_tmp="$out/lshw.json.tmp"
+  if [[ $EUID -eq 0 ]]; then
+    lshw -json > "$lshw_tmp" 2>/dev/null && mv "$lshw_tmp" "$out/lshw.json" || rm -f "$lshw_tmp"
+  elif sudo -n lshw -json > "$lshw_tmp" 2>/dev/null; then
+    mv "$lshw_tmp" "$out/lshw.json"
+  else
+    rm -f "$lshw_tmp" "$out/lshw.json"
+    printf 'Skipping lshw inventory: passwordless privileged access is unavailable.\n' >&2
   fi
 fi
 
 if command -v nvidia-smi >/dev/null 2>&1; then
-  nvidia-smi --query-gpu=name,driver_version,memory.total,compute_cap --format=csv > "$out/nvidia-smi.csv" 2>/dev/null || true
-  nvidia-smi -q > "$out/nvidia-smi-query.txt" 2>/dev/null || true
+  nvidia_tmp="$out/nvidia-smi.csv.tmp"
+  if nvidia-smi --query-gpu=name,driver_version,memory.total,compute_cap --format=csv > "$nvidia_tmp" 2>/dev/null; then
+    mv "$nvidia_tmp" "$out/nvidia-smi.csv"
+  else
+    rm -f "$nvidia_tmp" "$out/nvidia-smi.csv"
+  fi
+  nvidia_query_tmp="$out/nvidia-smi-query.txt.tmp"
+  if nvidia-smi -q > "$nvidia_query_tmp" 2>/dev/null; then
+    mv "$nvidia_query_tmp" "$out/nvidia-smi-query.txt"
+  else
+    rm -f "$nvidia_query_tmp" "$out/nvidia-smi-query.txt"
+  fi
 fi
 
 if command -v nvcc >/dev/null 2>&1; then nvcc --version > "$out/nvcc.txt"; fi
