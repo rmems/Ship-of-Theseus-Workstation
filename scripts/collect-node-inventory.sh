@@ -29,11 +29,9 @@ if command -v lshw >/dev/null 2>&1; then
     else
       rm -f "$lshw_tmp"
     fi
-  elif sudo -n lshw -json > "$lshw_tmp" 2>/dev/null; then
-    mv "$lshw_tmp" "$out/lshw.json"
   else
     rm -f "$lshw_tmp" "$out/lshw.json"
-    printf 'Skipping lshw inventory: passwordless privileged access is unavailable.\n' >&2
+    printf 'Skipping lshw inventory: run the collector as root to capture this optional report.\n' >&2
   fi
 fi
 
