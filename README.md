@@ -4,10 +4,6 @@
   <img src="assets/ship_of_theseus_current.jpg" width="800" alt="Ship of Theseus current white research workstation build">
 </p>
 
-<p align="center">
-  <img src="assets/ship_of_theseus_rgb.jpg" width="400" alt="Ship of Theseus workstation with RGB lighting">
-</p>
-
 **Ship of Theseus** is my single-node AI/HPC research workstation and self-hosted engineering environment. It is both a physical machine and a record of a larger transition: from an abandoned plan to rebuild an early-2000s PC, to a fresh Electrical Engineering start, and ultimately to the AI Engineering path that now defines my independent work.
 
 This repository documents the machine as infrastructure: the hardware, software stack, workloads, reproducibility practices, and evolution of the node that supports my early-career AI/ML systems and agentic-systems research.
@@ -150,7 +146,7 @@ These directories represent the intended infrastructure layout and will be added
 
 ## 🤖 AI collaboration attribution
 
-The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Luna by OpenAI**. GPT-5.6 Luna contributed repository-scope analysis, information architecture, README drafting/refinement, and integration of the project's origin story into the current infrastructure narrative; final project direction and repository ownership remain with **rmems**.
+The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Sol and GPT-5.6 Luna by OpenAI**. GPT-5.6 Sol and GPT-5.6 Luna contributed repository-scope analysis, information architecture, README drafting/refinement, and integration of the project's origin story into the current infrastructure narrative; final project direction and repository ownership remain with **rmems**.
 
 AI-assisted contributions are attributed explicitly when they materially shape repository documentation or engineering decisions.
 
