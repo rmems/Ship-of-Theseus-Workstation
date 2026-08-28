@@ -21,7 +21,14 @@ lsblk -J -o NAME,MODEL,SIZE,TYPE,FSTYPE,MOUNTPOINTS > "$out/lsblk.json"
 if command -v lshw >/dev/null 2>&1; then
   lshw_tmp="$out/lshw.json.tmp"
   if [[ $EUID -eq 0 ]]; then
-    lshw -json > "$lshw_tmp" 2>/dev/null && mv "$lshw_tmp" "$out/lshw.json" || rm -f "$lshw_tmp"
+    if lshw -json > "$lshw_tmp" 2>/dev/null; then
+      if ! mv "$lshw_tmp" "$out/lshw.json"; then
+        rm -f "$lshw_tmp"
+        exit 1
+      fi
+    else
+      rm -f "$lshw_tmp"
+    fi
   elif sudo -n lshw -json > "$lshw_tmp" 2>/dev/null; then
     mv "$lshw_tmp" "$out/lshw.json"
   else

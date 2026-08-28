@@ -2,6 +2,10 @@
 set -uo pipefail
 
 out=${1:-benchmarks/verification-$(date -u +%Y%m%dT%H%M%SZ).txt}
+if [[ -e $out ]]; then
+  printf 'Refusing to reuse verification output path: %s\n' "$out" >&2
+  exit 2
+fi
 mkdir -p "$(dirname "$out")"
 
 failures=0

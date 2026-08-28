@@ -25,7 +25,7 @@ The verifier sources `/etc/os-release` and requires `ID=fedora`; it also checks 
 
 For repeatable CPU and memory stress testing, use [`stress-ng`](https://github.com/ColinIanKing/stress-ng). For controlled storage tests, use [`fio`](https://github.com/axboe/fio) against an explicitly selected test directory or device. The included benchmark script records each inventory command's status, writes and removes a 1 GiB temporary file for its filesystem smoke test, and exits nonzero if collection or the write fails. It is not a replacement for workload-specific benchmarks.
 
-Baseline files must include their UTC collection time and command family. Compare like-for-like runs: power policy, driver/runtime versions, workload size, thermal state, and background processes can materially change results. Never replace a failed or surprising measurement with a specification-sheet value.
+Use each collector's emitted metadata when interpreting its artifact: inventory directories contain `collected_at_utc.txt` plus command-named files such as `lscpu.txt` and `lsblk.json`; verification reports emit `collected_at_utc` and `command_family`; benchmark reports emit `collected_at_utc`, `status`, and `command`; and telemetry rows emit `timestamp_utc`. Compare like-for-like runs: power policy, driver/runtime versions, workload size, thermal state, and background processes can materially change results. Never replace a failed or surprising measurement with a specification-sheet value.
 
 ## Safety and redaction
 
