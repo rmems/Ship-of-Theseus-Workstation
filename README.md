@@ -1,7 +1,11 @@
 # ⚙️ Ship of Theseus | AI/HPC Research Node
 
 <p align="center">
-  <img src="assets/ship_of_theseus.png" width="800" alt="Ship of Theseus research workstation">
+  <img src="assets/ship_of_theseus_current.jpg" width="800" alt="Ship of Theseus current white research workstation build">
+</p>
+
+<p align="center">
+  <img src="assets/ship_of_theseus_rgb.jpg" width="400" alt="Ship of Theseus workstation with RGB lighting">
 </p>
 
 **Ship of Theseus** is my single-node AI/HPC research workstation and self-hosted engineering environment. It is both a physical machine and a record of a larger transition: from an abandoned plan to rebuild an early-2000s PC, to a fresh Electrical Engineering start, and ultimately to the AI Engineering path that now defines my independent work.
@@ -48,16 +52,37 @@ This machine is especially important to my **early-career independent portfolio*
 
 ## 🖥️ Node architecture
 
+### Core compute
+
 | Component | Specification | Primary role |
 | :--- | :--- | :--- |
-| **CPU** | AMD Ryzen 9 9950X (16 cores) | Compilation, simulation, data processing, multi-process agent workloads |
-| **GPU** | ASUS ProArt GeForce RTX 5080 OC, 16 GB VRAM | Local ML, CUDA experimentation, GPU-accelerated research |
-| **Memory** | 64 GB (2 × 32 GB) G.SKILL Trident Z5 Neo RGB DDR5-6000, CL30-40-40-96, AMD EXPO | Dataset processing, parallel development workloads, simulation, local model workflows |
-| **Primary storage** | 2 TB Crucial T700 PCIe 5.0 NVMe | High-throughput working storage, models, build artifacts, experiment data |
-| **Backup storage** | Fanxiang PCIe 4.0 NVMe SSD | Secondary/backup storage for research data, artifacts, and working sets |
+| **CPU** | AMD Ryzen 9 9950X, 16 cores | Compilation, simulation, data processing, and multi-process agent workloads |
+| **GPU** | ASUS ProArt GeForce RTX 5080 OC, 16 GB VRAM | Local ML, CUDA experimentation, and GPU-accelerated research |
+| **Motherboard** | ASUS ProArt X870E-CREATOR WIFI | AM5 workstation platform, PCIe 5.0 expansion, multi-M.2 storage, and high-bandwidth connectivity |
+| **Memory** | 64 GB total: 2 × 32 GB G.SKILL Trident Z5 Neo RGB, DDR5-6000, CL30-40-40-96, AMD EXPO | Dataset processing, parallel development workloads, simulation, and local model work |
+| **Primary storage** | 2 TB Crucial T700 PCIe 5.0 NVMe | High-throughput working storage for models, build artifacts, and experiment data |
+| **Secondary / backup storage** | 2 TB Fanxiang PCIe 4.0 NVMe SSD | Secondary workspace, overflow storage, backups, and staging |
 | **Operating system** | Fedora Linux | Primary research, development, automation, and self-hosted CI environment |
 
-**Installed memory kit:** G.SKILL `F5-6000J3040G32GX2-TZ5NR` — 64 GB total (32 GB × 2), DDR5-6000, CL30-40-40-96, 1.40 V, AMD EXPO.
+The memory kit is G.SKILL `F5-6000J3040G32GX2-TZ5NR`: 64 GB total, 32 GB × 2, DDR5-6000, CL30-40-40-96, 1.40 V, with AMD EXPO.
+
+### Power, cooling, and airflow
+
+| Component | Specification | Operational role |
+| :--- | :--- | :--- |
+| **Power supply** | be quiet! Straight Power 12, 1500 W, ATX 3.0 / PCIe 5.0, 80+ Platinum | Stable power delivery and headroom for sustained GPU workloads and future expansion |
+| **CPU cooler** | ARCTIC Liquid Freezer III Pro 360 A-RGB, white | Sustained CPU thermals during long compilations, simulations, and data processing runs |
+| **Top airflow** | NZXT F420 RGB Core, white, 420 mm single-frame RGB fan unit | Top exhaust |
+| **Bottom airflow** | NZXT F420 RGB Core, white, 420 mm single-frame RGB fan unit, reverse-blade orientation | Bottom intake |
+
+The top and bottom fan units use the same NZXT F420 RGB Core model. This layout supports sustained compute while keeping the physical node easy to inspect and evolve.
+
+### Workstation peripherals
+
+| Component | Specification |
+| :--- | :--- |
+| **Keyboard** | ASUS ROG Strix Scope II 96 Wireless |
+| **Mouse** | ASUS ROG Spatha X Wireless |
 
 The machine is intentionally treated as an evolving research node rather than a fixed build. Hardware, drivers, runtimes, and research workloads may change over time—the name **Ship of Theseus** reflects that continuous replacement and refinement.
 
@@ -125,7 +150,7 @@ These directories represent the intended infrastructure layout and will be added
 
 ## 🤖 AI collaboration attribution
 
-The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Sol by OpenAI**. GPT-5.6 Sol contributed repository-scope analysis, information architecture, README drafting/refinement, and integration of the project's origin story into the current infrastructure narrative; final project direction and repository ownership remain with **rmems**.
+The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Luna by OpenAI**. GPT-5.6 Luna contributed repository-scope analysis, information architecture, README drafting/refinement, and integration of the project's origin story into the current infrastructure narrative; final project direction and repository ownership remain with **rmems**.
 
 AI-assisted contributions are attributed explicitly when they materially shape repository documentation or engineering decisions.
 
