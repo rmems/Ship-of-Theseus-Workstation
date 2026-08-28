@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmems/Ship-of-Theseus-Workstation/blob/main/schemas/system-report.schema.json",
+  "title": "Ship of Theseus sanitized system report",
+  "type": "object",
+  "required": ["schema_version", "report_id", "collected_at_utc", "collector", "node", "identity", "volatile", "collection_status"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "report_id": {"type": "string", "pattern": "^ship-of-theseus-[0-9TZ]+$"},
+    "collected_at_utc": {"type": "string", "format": "date-time"},
+    "collector": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {"name": {"const": "theseus-report"}, "version": {"type": "string"}},
+      "additionalProperties": false
+    },
+    "node": {
+      "type": "object",
+      "required": ["label"],
+      "properties": {"label": {"const": "ship-of-theseus"}},
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "required": ["architecture", "operating_system", "kernel_release", "cpu", "memory", "storage"],
+      "properties": {
+        "architecture": {"type": "string"},
+        "operating_system": {"type": "object", "required": ["id"]},
+        "kernel_release": {"type": "string"},
+        "cpu": {"type": "object", "required": ["model", "logical_cpus"]},
+        "memory": {"type": "object", "required": ["total_bytes"]},
+        "storage": {"type": "array"},
+        "gpu": {"type": "array"},
+        "cuda_toolkit_version": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "volatile": {"type": "object", "required": ["memory_available_bytes"]},
+    "collection_status": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["collector", "state"],
+        "properties": {
+          "collector": {"type": "string"},
+          "state": {"enum": ["available", "unavailable", "failed", "omitted"]},
+          "reason": {"enum": ["command_not_found", "command_failed", "source_unavailable", "unparseable_output"]}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
