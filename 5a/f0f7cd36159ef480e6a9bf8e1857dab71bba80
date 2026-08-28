@@ -1,0 +1,33 @@
+.github/workflows/system-report.yml
+  s_d59269e92edc84::t_fa15741c3bf4f5 1-25
+THIRD_PARTY_NOTICES.md
+  s_d59269e92edc84::t_fa15741c3bf4f5 18
+schemas/system-report.schema.json
+  s_d59269e92edc84::t_fa15741c3bf4f5 28-37,39-84,89-94
+docs/system-report.md
+  s_d59269e92edc84::t_47ab4714663fde 18
+  s_d59269e92edc84::t_fa15741c3bf4f5 19-20
+requirements.txt
+  s_d59269e92edc84::t_fa15741c3bf4f5 1
+scripts/theseus-report
+  s_d59269e92edc84::t_fa15741c3bf4f5 19,25-26,31-32,48,74,96,99-107,165-166,177-178,231-235,241,247-251,258-265,289-294,296-307
+tests/test_theseus_report.py
+  s_d59269e92edc84::t_bb27bec6fc7317 84-98
+  s_d59269e92edc84::t_fa15741c3bf4f5 28-29,65-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "5af0f7cd36159ef480e6a9bf8e1857dab71bba80",
+  "prompts": {},
+  "sessions": {
+    "s_d59269e92edc84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04907-e120-73e0-b5a0-317d07a61fca",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
