@@ -1,0 +1,23 @@
+schema_version = "0.1"
+node_name = "Ship of Theseus"
+repository = "rmems/Ship-of-Theseus-Workstation"
+operating_system = "Fedora Linux"
+
+[hardware]
+cpu = "AMD Ryzen 9 9950X, 16 cores"
+gpu = "ASUS ProArt GeForce RTX 5080 OC, 16 GB VRAM"
+motherboard = "ASUS ProArt X870E-CREATOR WIFI"
+memory = "64 GB (2x32 GB) G.SKILL Trident Z5 Neo RGB DDR5-6000 CL30-40-40-96, AMD EXPO"
+primary_storage = "2 TB Crucial T700 PCIe 5.0 NVMe"
+secondary_storage = "2 TB Fanxiang PCIe 4.0 NVMe SSD"
+
+[software]
+# Fill these only from a collected inventory; do not guess versions.
+kernel = ""
+nvidia_driver = ""
+cuda_toolkit = ""
+python = ""
+
+[provenance]
+source_of_truth = "runtime collection plus README hardware record"
+redaction_policy = "Do not record credentials, tokens, private keys, or full home-directory paths."

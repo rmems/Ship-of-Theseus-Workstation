@@ -119,6 +119,8 @@ This repository is the **infrastructure record** for the node. As the environmen
 - experiment-environment provenance and reproducibility notes;
 - documented failure modes, upgrades, and migration history.
 
+The reproducible-node baseline is documented in [`docs/node-baseline.md`](docs/node-baseline.md), with companion runbooks for [`self-hosted-runner.md`](docs/self-hosted-runner.md), [`backup-recovery.md`](docs/backup-recovery.md), and [`workload-catalog.md`](docs/workload-catalog.md). Runtime inventory, verification, benchmark, and telemetry collectors live under `scripts/`; they produce timestamped evidence without embedding machine-specific results in the README.
+
 The repository should stay narrow: application-specific code belongs in its own project. Ship-of-Theseus-Workstation documents the **platform those projects run on**.
 
 ## 📐 Engineering principles
@@ -136,9 +138,9 @@ The repository should stay narrow: application-specific code belongs in its own 
 Ship-of-Theseus-Workstation/
 ├── README.md
 ├── assets/
-├── docs/          # architecture, GPU stack, CI, reproducibility
-├── scripts/       # bootstrap, verification, inventory, benchmarks
-├── configs/       # node-level service/tool configuration
+├── docs/          # baseline, GPU stack, CI, recovery, reproducibility
+├── scripts/       # verification, inventory, benchmarks, telemetry
+├── configs/       # node-level provenance and service/tool configuration
 └── benchmarks/    # reproducible performance snapshots and results
 ```
 
