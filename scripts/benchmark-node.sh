@@ -26,7 +26,7 @@ run_and_record() {
   echo '## Temporary filesystem write smoke test'
   if tmp=$(mktemp); then
     trap 'rm -f "$tmp"' EXIT
-    run_and_record dd dd if=/dev/zero of="$tmp" bs=1M count=1024 conv=fdatasync status=progress
+    run_and_record dd dd if=/dev/zero of="$tmp" bs=1M count=1024 conv=fdatasync status=progress 2>&1
   else
     printf 'status=failed command=mktemp exit_code=%s\n' "$?"
     failures=$((failures + 1))

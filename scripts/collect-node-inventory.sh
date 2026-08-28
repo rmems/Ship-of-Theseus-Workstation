@@ -2,7 +2,12 @@
 set -euo pipefail
 
 out=${1:-benchmarks/inventory-$(date -u +%Y%m%dT%H%M%SZ)}
-mkdir -p "$out"
+if [[ -e $out ]]; then
+  printf 'Refusing to reuse inventory output path: %s\n' "$out" >&2
+  exit 2
+fi
+mkdir -p "$(dirname "$out")"
+mkdir "$out"
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "$out/collected_at_utc.txt"
 hostnamectl 2>/dev/null > "$out/hostnamectl.txt" || hostname > "$out/hostname.txt"
@@ -41,6 +46,13 @@ if command -v nvidia-smi >/dev/null 2>&1; then
 fi
 
 if command -v nvcc >/dev/null 2>&1; then nvcc --version > "$out/nvcc.txt"; fi
-if command -v sensors >/dev/null 2>&1; then sensors > "$out/sensors.txt" || true; fi
+if command -v sensors >/dev/null 2>&1; then
+  sensors_tmp="$out/sensors.txt.tmp"
+  if sensors > "$sensors_tmp" 2>/dev/null; then
+    mv "$sensors_tmp" "$out/sensors.txt"
+  else
+    rm -f "$sensors_tmp" "$out/sensors.txt"
+  fi
+fi
 
 printf 'Inventory written to %s\n' "$out"
