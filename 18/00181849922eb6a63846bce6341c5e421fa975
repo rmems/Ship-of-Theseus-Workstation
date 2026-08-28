@@ -1,0 +1,20 @@
+README.md
+  s_7393744b94551d::t_f65466c6285add 76
+  s_7393744b94551d::t_4252edd9a25df6 4-8,55-56,59-64,67-75,77-85,153,159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1800181849922eb6a63846bce6341c5e421fa975",
+  "prompts": {},
+  "sessions": {
+    "s_7393744b94551d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04851-d14c-7dd2-bd41-e3a70e2ac0b7",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
