@@ -119,6 +119,8 @@ This repository is the **infrastructure record** for the node. As the environmen
 - experiment-environment provenance and reproducibility notes;
 - documented failure modes, upgrades, and migration history.
 
+The reproducible-node baseline is documented in [`docs/node-baseline.md`](docs/node-baseline.md), with companion runbooks for [`self-hosted-runner.md`](docs/self-hosted-runner.md), [`backup-recovery.md`](docs/backup-recovery.md), and [`workload-catalog.md`](docs/workload-catalog.md). Runtime inventory, verification, benchmark, and telemetry collectors live under `scripts/`; they produce timestamped evidence without embedding machine-specific results in the README.
+
 The repository should stay narrow: application-specific code belongs in its own project. Ship-of-Theseus-Workstation documents the **platform those projects run on**.
 
 ## 📐 Engineering principles
@@ -136,9 +138,9 @@ The repository should stay narrow: application-specific code belongs in its own 
 Ship-of-Theseus-Workstation/
 ├── README.md
 ├── assets/
-├── docs/          # architecture, GPU stack, CI, reproducibility
-├── scripts/       # bootstrap, verification, inventory, benchmarks
-├── configs/       # node-level service/tool configuration
+├── docs/          # baseline, GPU stack, CI, recovery, reproducibility
+├── scripts/       # verification, inventory, benchmarks, telemetry
+├── configs/       # node-level provenance and service/tool configuration
 └── benchmarks/    # reproducible performance snapshots and results
 ```
 
@@ -146,9 +148,13 @@ These directories represent the intended infrastructure layout and will be added
 
 ## 🤖 AI collaboration attribution
 
-The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Sol and GPT-5.6 Luna by OpenAI**. GPT-5.6 Sol and GPT-5.6 Luna contributed repository-scope analysis, information architecture, README drafting/refinement, and integration of the project's origin story into the current infrastructure narrative; final project direction and repository ownership remain with **rmems**.
+The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Sol, GPT-5.6 Luna, and GPT-5.6 Terra by OpenAI**. GPT-5.6 Sol, GPT-5.6 Luna, and GPT-5.6 Terra contributed repository-scope analysis, information architecture, README drafting/refinement, and integration of the project's origin story into the current infrastructure narrative; final project direction and repository ownership remain with **rmems**.
 
 AI-assisted contributions are attributed explicitly when they materially shape repository documentation or engineering decisions.
+
+## 📄 License and third-party tools
+
+Original scripts and documentation are available under the [MIT License](LICENSE). Workstation photographs and other visual assets are excluded; see [assets licensing](assets/LICENSE.md). The collectors invoke, but do not vendor, external tooling; its attribution and upstream licensing are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
