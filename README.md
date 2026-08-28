@@ -148,7 +148,7 @@ These directories represent the intended infrastructure layout and will be added
 
 ## 🤖 AI collaboration attribution
 
-The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Sol and GPT-5.6 Luna by OpenAI**. GPT-5.6 Sol and GPT-5.6 Luna contributed repository-scope analysis, information architecture, README drafting/refinement, and integration of the project's origin story into the current infrastructure narrative; final project direction and repository ownership remain with **rmems**.
+The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Sol, GPT-5.6 Luna, and GPT-5.6 Terra by OpenAI**. GPT-5.6 Sol, GPT-5.6 Luna, and GPT-5.6 Terra contributed repository-scope analysis, information architecture, README drafting/refinement, and integration of the project's origin story into the current infrastructure narrative; final project direction and repository ownership remain with **rmems**.
 
 AI-assisted contributions are attributed explicitly when they materially shape repository documentation or engineering decisions.
 
