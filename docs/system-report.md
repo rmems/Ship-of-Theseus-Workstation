@@ -15,6 +15,9 @@ python3 -m unittest tests/test_theseus_report.py
 `collect` refuses an existing output directory. The default output is a new,
 timestamped, PID-suffixed directory under `benchmarks/`.
 
+The validator uses the repository's bounded `jsonschema` dependency. Install it
+with `python3 -m pip install -r requirements.txt` before using the CLI.
+
 ## Contract
 
 The public artifact is `system-report.json`, defined by

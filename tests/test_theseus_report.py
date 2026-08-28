@@ -25,6 +25,8 @@ class FixtureRunner:
             ("nvidia-smi", "--query-gpu=name,memory.total,driver_version,compute_cap", "--format=csv,noheader,nounits"): "nvidia.csv",
             ("nvcc", "--version"): "nvcc.txt",
         }
+        if args not in files:
+            raise FileNotFoundError(f"No fixture for command: {args}")
         return report.CommandResult(0, (FIXTURES / files[args]).read_text(), "")
 
 
@@ -60,6 +62,40 @@ class TheseusReportTests(unittest.TestCase):
             report.validate_report(valid)
         with self.assertRaises(report.ReportError):
             report.validate_report({"schema_version": "1.0.0"})
+        malformed = report.build_report(FixtureRunner(), FIXTURES / "os-release")
+        malformed["identity"]["memory"]["total_bytes"] = "many"
+        with self.assertRaises(report.ReportError):
+            report.validate_report(malformed)
+
+    def test_optional_unparseable_or_unlaunchable_collectors_do_not_abort(self):
+        class BrokenOptionalRunner(FixtureRunner):
+            def run(self, *args):
+                if args[0] == "nvidia-smi":
+                    return report.CommandResult(0, "not,csv", "")
+                if args[0] == "nvcc":
+                    raise PermissionError(args[0])
+                return super().run(*args)
+
+        report_data = report.build_report(BrokenOptionalRunner(), FIXTURES / "os-release")
+        states = {item["collector"]: item["state"] for item in report_data["collection_status"]}
+        self.assertEqual(states["nvidia_smi"], "failed")
+        self.assertEqual(states["nvcc"], "failed")
+
+    def test_unparseable_nvcc_and_legacy_free_output_are_handled(self):
+        class UnparseableNvccRunner(FixtureRunner):
+            def run(self, *args):
+                if args[0] == "nvcc":
+                    return report.CommandResult(0, "not a CUDA version", "")
+                return super().run(*args)
+
+        report_data = report.build_report(UnparseableNvccRunner(), FIXTURES / "os-release")
+        states = {item["collector"]: item["state"] for item in report_data["collection_status"]}
+        self.assertEqual(states["nvcc"], "failed")
+        self.assertIn("uptime", states)
+        self.assertEqual(
+            report.parse_free("              total        used        free\nMem:        100         25         75\n"),
+            {"total_bytes": 100, "available_bytes": 75},
+        )
 
     def test_schema_is_valid_json_and_has_expected_dialect(self):
         schema = json.loads((ROOT / "schemas" / "system-report.schema.json").read_text())

@@ -25,17 +25,76 @@
       "required": ["architecture", "operating_system", "kernel_release", "cpu", "memory", "storage"],
       "properties": {
         "architecture": {"type": "string"},
-        "operating_system": {"type": "object", "required": ["id"]},
+    "operating_system": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "version_id": {"type": "string"},
+        "pretty_name": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
         "kernel_release": {"type": "string"},
-        "cpu": {"type": "object", "required": ["model", "logical_cpus"]},
-        "memory": {"type": "object", "required": ["total_bytes"]},
-        "storage": {"type": "array"},
-        "gpu": {"type": "array"},
+        "cpu": {
+          "type": "object",
+          "required": ["model", "logical_cpus"],
+          "properties": {
+            "model": {"type": "string", "minLength": 1},
+            "logical_cpus": {"type": "integer", "minimum": 1},
+            "sockets": {"type": "integer", "minimum": 1},
+            "cores_per_socket": {"type": "integer", "minimum": 1},
+            "threads_per_core": {"type": "integer", "minimum": 1}
+          },
+          "additionalProperties": false
+        },
+        "memory": {
+          "type": "object",
+          "required": ["total_bytes"],
+          "properties": {"total_bytes": {"type": "integer", "minimum": 0}},
+          "additionalProperties": false
+        },
+        "storage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["size_bytes"],
+            "properties": {
+              "size_bytes": {"type": "integer", "minimum": 0},
+              "model": {"type": "string"},
+              "type": {"const": "disk"},
+              "transport": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "gpu": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["model"],
+            "properties": {
+              "model": {"type": "string", "minLength": 1},
+              "memory_total_bytes": {"type": "integer", "minimum": 0},
+              "driver_version": {"type": "string"},
+              "compute_capability": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        },
         "cuda_toolkit_version": {"type": "string"}
       },
       "additionalProperties": false
     },
-    "volatile": {"type": "object", "required": ["memory_available_bytes"]},
+    "volatile": {
+      "type": "object",
+      "required": ["memory_available_bytes"],
+      "properties": {
+        "memory_available_bytes": {"type": "integer", "minimum": 0},
+        "uptime_seconds": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
     "collection_status": {
       "type": "array",
       "items": {
