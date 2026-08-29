@@ -229,15 +229,20 @@ def build_report(
         "collection_status": collection_status,
     }
     try:
-        uptime_seconds = float(uptime_path.read_text(encoding="utf-8").split()[0])
-    except (OSError, ValueError, IndexError):
+        uptime_text = uptime_path.read_text(encoding="utf-8")
+    except OSError:
         collection_status.append(status("uptime", "unavailable", "source_unavailable"))
     else:
-        if math.isfinite(uptime_seconds) and uptime_seconds >= 0:
-            report["volatile"]["uptime_seconds"] = uptime_seconds
-            collection_status.append(status("uptime", "available"))
-        else:
+        try:
+            uptime_seconds = float(uptime_text.split()[0])
+        except (ValueError, IndexError):
             collection_status.append(status("uptime", "failed", "unparseable_output"))
+        else:
+            if math.isfinite(uptime_seconds) and uptime_seconds >= 0:
+                report["volatile"]["uptime_seconds"] = uptime_seconds
+                collection_status.append(status("uptime", "available"))
+            else:
+                collection_status.append(status("uptime", "failed", "unparseable_output"))
     if nvidia:
         devices = parse_nvidia_csv(nvidia.stdout)
         if devices:

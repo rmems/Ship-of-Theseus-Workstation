@@ -157,6 +157,16 @@ class TheseusReportTests(unittest.TestCase):
         self.assertEqual(states["uptime"], "failed")
         self.assertNotIn("uptime_seconds", report_data["volatile"])
 
+    def test_empty_or_nonnumeric_uptime_source_is_reported_as_failed_not_unavailable(self):
+        for contents in ("", "not-a-number\n"):
+            with tempfile.TemporaryDirectory() as tmp:
+                uptime_path = Path(tmp) / "uptime"
+                uptime_path.write_text(contents, encoding="utf-8")
+                report_data = report.build_report(FixtureRunner(), FIXTURES / "os-release", uptime_path=uptime_path)
+            states = {item["collector"]: item["state"] for item in report_data["collection_status"]}
+            self.assertEqual(states["uptime"], "failed", msg=f"contents={contents!r}")
+            self.assertNotIn("uptime_seconds", report_data["volatile"])
+
     def test_collect_removes_temporary_file_and_output_directory_on_write_failure(self):
         real_named_temp_file = tempfile.NamedTemporaryFile
 
