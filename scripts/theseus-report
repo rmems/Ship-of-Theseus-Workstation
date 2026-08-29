@@ -1,0 +1,364 @@
+#!/usr/bin/env python3
+"""Collect and validate a sanitized Ship of Theseus system report.
+
+The report is a reproducibility artifact, not a raw system dump. It records
+allowlisted platform facts and optional-collector status without persisting
+hostnames, usernames, serial numbers, UUIDs, IP addresses, mount paths, or raw
+command output.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import platform
+import re
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from jsonschema import Draft202012Validator, FormatChecker, ValidationError
+
+
+SCHEMA_VERSION = "1.0.0"
+COLLECTOR_VERSION = "1.0.0"
+DEFAULT_OUTPUT_ROOT = Path("benchmarks")
+COMMAND_TIMEOUT_SECONDS = 30
+SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "system-report.schema.json"
+
+
+class ReportError(RuntimeError):
+    """Raised when a required collector or report validation fails."""
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+class CommandRunner:
+    def run(self, *args: str) -> CommandResult:
+        env = {**os.environ, "LC_ALL": "C", "LANG": "C"}
+        completed = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=COMMAND_TIMEOUT_SECONDS, env=env
+        )
+        return CommandResult(completed.returncode, completed.stdout, completed.stderr)
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def parse_os_release(contents: str) -> dict[str, str]:
+    allowed = {"ID", "VERSION_ID", "PRETTY_NAME"}
+    values: dict[str, str] = {}
+    for line in contents.splitlines():
+        if "=" not in line or line.lstrip().startswith("#"):
+            continue
+        key, value = line.split("=", 1)
+        if key not in allowed:
+            continue
+        values[key.lower()] = value.strip().strip('"')
+    if not values.get("id"):
+        raise ReportError("/etc/os-release did not provide an operating-system ID")
+    return values
+
+
+def parse_lscpu(contents: str) -> dict[str, Any]:
+    data = json.loads(contents)
+    fields = {
+        item.get("field", "").strip().rstrip(":"): str(item.get("data", "")).strip()
+        for item in data.get("lscpu", [])
+        if isinstance(item, dict)
+    }
+
+    def integer(name: str) -> int | None:
+        value = fields.get(name)
+        return int(value) if value and value.isdigit() else None
+
+    cpu: dict[str, Any] = {
+        "model": fields.get("Model name") or fields.get("Architecture", "unknown"),
+        "logical_cpus": integer("CPU(s)"),
+        "sockets": integer("Socket(s)"),
+        "cores_per_socket": integer("Core(s) per socket"),
+        "threads_per_core": integer("Thread(s) per core"),
+    }
+    if not isinstance(cpu["logical_cpus"], int) or cpu["logical_cpus"] < 1:
+        raise ReportError("lscpu did not provide a positive logical CPU count")
+    return {key: value for key, value in cpu.items() if value is not None}
+
+
+def parse_free(contents: str) -> dict[str, int]:
+    header: list[str] | None = None
+    for line in contents.splitlines():
+        parts = line.split()
+        if parts and parts[0] == "total":
+            header = parts
+        if parts and parts[0] == "Mem:" and header:
+            values = dict(zip(header, parts[1:], strict=False))
+            try:
+                available = values.get("available", values["free"])
+                return {"total_bytes": int(values["total"]), "available_bytes": int(available)}
+            except (KeyError, ValueError) as error:
+                raise ReportError("free did not provide usable memory values") from error
+    raise ReportError("free did not provide a Mem: row")
+
+
+def parse_lsblk(contents: str) -> list[dict[str, Any]]:
+    data = json.loads(contents)
+    devices: list[dict[str, Any]] = []
+    for entry in data.get("blockdevices", []):
+        if not isinstance(entry, dict) or entry.get("type") != "disk":
+            continue
+        size = entry.get("size")
+        if isinstance(size, str) and size.isdigit():
+            size = int(size)
+        if not isinstance(size, int) or size < 0:
+            continue
+        device: dict[str, Any] = {"size_bytes": size}
+        for report_key, source_key in (("model", "model"), ("type", "type"), ("transport", "tran")):
+            value = entry.get(source_key)
+            if isinstance(value, str) and value.strip():
+                device[report_key] = value.strip()
+        devices.append(device)
+    return devices
+
+
+def parse_nvidia_csv(contents: str) -> list[dict[str, Any]]:
+    devices: list[dict[str, Any]] = []
+    for row in contents.splitlines():
+        values = [value.strip() for value in row.split(",")]
+        if len(values) != 4 or not values[0]:
+            continue
+        device: dict[str, Any] = {"model": values[0]}
+        if values[1].isdigit():
+            device["memory_total_bytes"] = int(values[1]) * 1024 * 1024
+        if values[2]:
+            device["driver_version"] = values[2]
+        if values[3]:
+            device["compute_capability"] = values[3]
+        devices.append(device)
+    return devices
+
+
+def parse_nvcc_version(contents: str) -> str | None:
+    match = re.search(r"\brelease\s+([0-9]+(?:\.[0-9]+)+)", contents)
+    return match.group(1) if match else None
+
+
+def status(name: str, state: str, reason: str | None = None) -> dict[str, str]:
+    result = {"collector": name, "state": state}
+    if reason:
+        result["reason"] = reason
+    return result
+
+
+def optional_command(runner: CommandRunner, name: str, *args: str) -> tuple[CommandResult | None, dict[str, str]]:
+    try:
+        result = runner.run(*args)
+    except FileNotFoundError:
+        return None, status(name, "unavailable", "command_not_found")
+    except (OSError, subprocess.TimeoutExpired):
+        return None, status(name, "failed", "command_failed")
+    if result.returncode != 0:
+        return None, status(name, "failed", "command_failed")
+    return result, status(name, "available")
+
+
+def required_command(runner: CommandRunner, *args: str) -> CommandResult:
+    try:
+        result = runner.run(*args)
+    except FileNotFoundError as error:
+        raise ReportError(f"required command not found: {args[0]}") from error
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise ReportError(f"required command failed: {args[0]}") from error
+    if result.returncode != 0:
+        raise ReportError(f"required command failed: {args[0]}")
+    return result
+
+
+def build_report(
+    runner: CommandRunner,
+    os_release_path: Path = Path("/etc/os-release"),
+    uptime_path: Path = Path("/proc/uptime"),
+) -> dict[str, Any]:
+    collection_status: list[dict[str, str]] = []
+    os_release = parse_os_release(os_release_path.read_text(encoding="utf-8"))
+    lscpu = required_command(runner, "lscpu", "--json")
+    free = required_command(runner, "free", "--bytes")
+    lsblk = required_command(runner, "lsblk", "--json", "--bytes", "--output", "TYPE,SIZE,MODEL,TRAN")
+    collection_status.extend(
+        [status("os_release", "available"), status("lscpu", "available"), status("free", "available"), status("lsblk", "available")]
+    )
+
+    nvidia, nvidia_status = optional_command(
+        runner,
+        "nvidia_smi",
+        "nvidia-smi",
+        "--query-gpu=name,memory.total,driver_version,compute_cap",
+        "--format=csv,noheader,nounits",
+    )
+    collection_status.append(nvidia_status)
+    nvcc, nvcc_status = optional_command(runner, "nvcc", "nvcc", "--version")
+    collection_status.append(nvcc_status)
+
+    collected_at = utc_now()
+    report: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "report_id": f"ship-of-theseus-{collected_at.replace(':', '').replace('-', '')}",
+        "collected_at_utc": collected_at,
+        "collector": {"name": "theseus-report", "version": COLLECTOR_VERSION},
+        "node": {"label": "ship-of-theseus"},
+        "identity": {
+            "architecture": platform.machine(),
+            "operating_system": os_release,
+            "kernel_release": platform.release(),
+            "cpu": parse_lscpu(lscpu.stdout),
+            "memory": {"total_bytes": parse_free(free.stdout)["total_bytes"]},
+            "storage": parse_lsblk(lsblk.stdout),
+        },
+        "volatile": {"memory_available_bytes": parse_free(free.stdout)["available_bytes"]},
+        "collection_status": collection_status,
+    }
+    try:
+        uptime_text = uptime_path.read_text(encoding="utf-8")
+    except OSError:
+        collection_status.append(status("uptime", "unavailable", "source_unavailable"))
+    else:
+        try:
+            uptime_seconds = float(uptime_text.split()[0])
+        except (ValueError, IndexError):
+            collection_status.append(status("uptime", "failed", "unparseable_output"))
+        else:
+            if math.isfinite(uptime_seconds) and uptime_seconds >= 0:
+                report["volatile"]["uptime_seconds"] = uptime_seconds
+                collection_status.append(status("uptime", "available"))
+            else:
+                collection_status.append(status("uptime", "failed", "unparseable_output"))
+    if nvidia:
+        devices = parse_nvidia_csv(nvidia.stdout)
+        if devices:
+            report["identity"]["gpu"] = devices
+        else:
+            set_status(collection_status, "nvidia_smi", "failed", "unparseable_output")
+    if nvcc:
+        version = parse_nvcc_version(nvcc.stdout)
+        if version:
+            report["identity"]["cuda_toolkit_version"] = version
+        else:
+            set_status(collection_status, "nvcc", "failed", "unparseable_output")
+    validate_report(report)
+    return report
+
+
+def validate_report(report: Any) -> None:
+    try:
+        schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+        Draft202012Validator(schema, format_checker=FormatChecker()).validate(report)
+    except (OSError, json.JSONDecodeError, ValidationError) as error:
+        reason = error.message if isinstance(error, ValidationError) else str(error)
+        raise ReportError(f"report does not satisfy the system-report schema: {reason}") from error
+    forbidden = re.compile(r"(hostname|username|serial|uuid|ip_address|mac_address|mountpoint|path|token|secret)", re.IGNORECASE)
+    for key in walk_keys(report):
+        if forbidden.search(key):
+            raise ReportError(f"sensitive field is not permitted: {key}")
+
+
+def set_status(collection_status: list[dict[str, str]], name: str, state: str, reason: str) -> None:
+    for index, item in enumerate(collection_status):
+        if item["collector"] == name:
+            collection_status[index] = status(name, state, reason)
+            return
+    raise ReportError(f"collector status missing: {name}")
+
+
+def walk_keys(value: Any) -> list[str]:
+    keys: list[str] = []
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            keys.append(str(key))
+            keys.extend(walk_keys(nested))
+    elif isinstance(value, list):
+        for nested in value:
+            keys.extend(walk_keys(nested))
+    return keys
+
+
+def output_directory(value: str | None) -> Path:
+    if value:
+        return Path(value)
+    return DEFAULT_OUTPUT_ROOT / f"system-report-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}-{os.getpid()}"
+
+
+def collect_command(args: argparse.Namespace) -> int:
+    out = output_directory(args.output)
+    if out.exists():
+        raise ReportError(f"refusing to reuse report output path: {out}")
+    report = build_report(CommandRunner())
+    contents = json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        out.mkdir()
+    except FileExistsError as error:
+        raise ReportError(f"refusing to reuse report output path: {out}") from error
+    destination = out / "system-report.json"
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=out, delete=False) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(contents)
+        temporary_path.replace(destination)
+    except OSError:
+        temporary_path = locals().get("temporary_path")
+        if isinstance(temporary_path, Path):
+            temporary_path.unlink(missing_ok=True)
+        destination.unlink(missing_ok=True)
+        out.rmdir()
+        raise
+    print(destination)
+    return 0
+
+
+def reject_nonstandard_constant(token: str) -> float:
+    raise ValueError(f"report is not standard JSON: unexpected numeric constant {token!r}")
+
+
+def validate_command(args: argparse.Namespace) -> int:
+    report = json.loads(
+        Path(args.report).read_text(encoding="utf-8"), parse_constant=reject_nonstandard_constant
+    )
+    validate_report(report)
+    print(f"valid: {args.report}")
+    return 0
+
+
+def parser() -> argparse.ArgumentParser:
+    cli = argparse.ArgumentParser(description="Collect a sanitized Ship of Theseus system report.")
+    commands = cli.add_subparsers(dest="command", required=True)
+    collect = commands.add_parser("collect", help="write a sanitized system-report.json")
+    collect.add_argument("--output", help="new directory for system-report.json")
+    collect.set_defaults(handler=collect_command)
+    validate = commands.add_parser("validate", help="validate a system-report.json")
+    validate.add_argument("report", help="path to system-report.json")
+    validate.set_defaults(handler=validate_command)
+    return cli
+
+
+def main() -> int:
+    try:
+        args = parser().parse_args()
+        return args.handler(args)
+    except (OSError, ValueError, json.JSONDecodeError, ReportError) as error:
+        print(f"theseus-report: {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

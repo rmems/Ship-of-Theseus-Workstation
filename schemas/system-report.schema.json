@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmems/Ship-of-Theseus-Workstation/blob/main/schemas/system-report.schema.json",
+  "title": "Ship of Theseus sanitized system report",
+  "type": "object",
+  "required": ["schema_version", "report_id", "collected_at_utc", "collector", "node", "identity", "volatile", "collection_status"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "report_id": {"type": "string", "pattern": "^ship-of-theseus-[0-9TZ]+$"},
+    "collected_at_utc": {"type": "string", "format": "date-time"},
+    "collector": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {"name": {"const": "theseus-report"}, "version": {"type": "string"}},
+      "additionalProperties": false
+    },
+    "node": {
+      "type": "object",
+      "required": ["label"],
+      "properties": {"label": {"const": "ship-of-theseus"}},
+      "additionalProperties": false
+    },
+    "identity": {
+      "type": "object",
+      "required": ["architecture", "operating_system", "kernel_release", "cpu", "memory", "storage"],
+      "properties": {
+        "architecture": {"type": "string"},
+    "operating_system": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "version_id": {"type": "string"},
+        "pretty_name": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+        "kernel_release": {"type": "string"},
+        "cpu": {
+          "type": "object",
+          "required": ["model", "logical_cpus"],
+          "properties": {
+            "model": {"type": "string", "minLength": 1},
+            "logical_cpus": {"type": "integer", "minimum": 1},
+            "sockets": {"type": "integer", "minimum": 1},
+            "cores_per_socket": {"type": "integer", "minimum": 1},
+            "threads_per_core": {"type": "integer", "minimum": 1}
+          },
+          "additionalProperties": false
+        },
+        "memory": {
+          "type": "object",
+          "required": ["total_bytes"],
+          "properties": {"total_bytes": {"type": "integer", "minimum": 0}},
+          "additionalProperties": false
+        },
+        "storage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["size_bytes"],
+            "properties": {
+              "size_bytes": {"type": "integer", "minimum": 0},
+              "model": {"type": "string"},
+              "type": {"const": "disk"},
+              "transport": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "gpu": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["model"],
+            "properties": {
+              "model": {"type": "string", "minLength": 1},
+              "memory_total_bytes": {"type": "integer", "minimum": 0},
+              "driver_version": {"type": "string"},
+              "compute_capability": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "cuda_toolkit_version": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "volatile": {
+      "type": "object",
+      "required": ["memory_available_bytes"],
+      "properties": {
+        "memory_available_bytes": {"type": "integer", "minimum": 0},
+        "uptime_seconds": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "collection_status": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["collector", "state"],
+        "properties": {
+          "collector": {"enum": ["os_release", "lscpu", "free", "lsblk", "nvidia_smi", "nvcc", "uptime"]},
+          "state": {"enum": ["available", "unavailable", "failed", "omitted"]},
+          "reason": {"enum": ["command_not_found", "command_failed", "source_unavailable", "unparseable_output"]}
+        },
+        "additionalProperties": false
+      },
+      "allOf": [
+        {"contains": {"properties": {"collector": {"const": "os_release"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "lscpu"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "free"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "lsblk"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "nvidia_smi"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "nvcc"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "uptime"}}}, "minContains": 1, "maxContains": 1}
+      ]
+    }
+  },
+  "additionalProperties": false
+}

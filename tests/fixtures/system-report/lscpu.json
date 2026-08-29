@@ -1,0 +1,1 @@
+{"lscpu":[{"field":"Architecture:","data":"x86_64"},{"field":"CPU(s):","data":"32"},{"field":"Model name:","data":"AMD Ryzen 9 9950X 16-Core Processor"},{"field":"Thread(s) per core:","data":"2"},{"field":"Core(s) per socket:","data":"16"},{"field":"Socket(s):","data":"1"}]}
