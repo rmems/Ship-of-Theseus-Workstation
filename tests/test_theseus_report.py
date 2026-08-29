@@ -1,7 +1,9 @@
+import argparse
 import importlib.machinery
 import importlib.util
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -120,9 +122,10 @@ class TheseusReportTests(unittest.TestCase):
             report.validate_report(report_data)
 
     def test_validate_report_wraps_schema_load_failure_without_crashing(self):
-        with mock.patch.object(report, "SCHEMA_PATH", Path("/nonexistent/schema.json")):
-            with self.assertRaises(report.ReportError):
-                report.validate_report({"schema_version": "1.0.0"})
+        with mock.patch.object(report, "SCHEMA_PATH", Path("/nonexistent/schema.json")), self.assertRaises(
+            report.ReportError
+        ):
+            report.validate_report({"schema_version": "1.0.0"})
 
     def test_command_runner_forces_stable_locale(self):
         with mock.patch("subprocess.run") as run:
@@ -134,6 +137,34 @@ class TheseusReportTests(unittest.TestCase):
     def test_json_loads_rejects_nonstandard_numeric_constants(self):
         with self.assertRaises(ValueError):
             json.loads('{"uptime_seconds": NaN}', parse_constant=report.reject_nonstandard_constant)
+
+    def test_non_finite_uptime_is_reported_as_failed_instead_of_crashing_serialization(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            uptime_path = Path(tmp) / "uptime"
+            uptime_path.write_text("nan 123.4\n", encoding="utf-8")
+            report_data = report.build_report(FixtureRunner(), FIXTURES / "os-release", uptime_path=uptime_path)
+        states = {item["collector"]: item["state"] for item in report_data["collection_status"]}
+        self.assertEqual(states["uptime"], "failed")
+        self.assertNotIn("uptime_seconds", report_data["volatile"])
+        json.dumps(report_data, allow_nan=False)
+
+    def test_collect_removes_temporary_file_and_output_directory_on_write_failure(self):
+        real_named_temp_file = tempfile.NamedTemporaryFile
+
+        def broken_named_temp_file(*args, **kwargs):
+            handle = real_named_temp_file(*args, **kwargs)
+            handle.write = mock.Mock(side_effect=OSError("disk full"))
+            return handle
+
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "system-report-out"
+            with (
+                mock.patch.object(report, "build_report", return_value={"stub": True}),
+                mock.patch("tempfile.NamedTemporaryFile", side_effect=broken_named_temp_file),
+                self.assertRaises(OSError),
+            ):
+                report.collect_command(argparse.Namespace(output=str(target)))
+            self.assertFalse(target.exists())
 
 
 if __name__ == "__main__":

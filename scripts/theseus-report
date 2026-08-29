@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import platform
 import re
@@ -232,8 +233,11 @@ def build_report(
     except (OSError, ValueError, IndexError):
         collection_status.append(status("uptime", "unavailable", "source_unavailable"))
     else:
-        report["volatile"]["uptime_seconds"] = uptime_seconds
-        collection_status.append(status("uptime", "available"))
+        if math.isfinite(uptime_seconds):
+            report["volatile"]["uptime_seconds"] = uptime_seconds
+            collection_status.append(status("uptime", "available"))
+        else:
+            collection_status.append(status("uptime", "failed", "unparseable_output"))
     if nvidia:
         devices = parse_nvidia_csv(nvidia.stdout)
         if devices:
@@ -303,8 +307,8 @@ def collect_command(args: argparse.Namespace) -> int:
     destination = out / "system-report.json"
     try:
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=out, delete=False) as temporary:
-            temporary.write(contents)
             temporary_path = Path(temporary.name)
+            temporary.write(contents)
         temporary_path.replace(destination)
     except OSError:
         temporary_path = locals().get("temporary_path")
