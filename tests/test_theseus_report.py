@@ -148,6 +148,15 @@ class TheseusReportTests(unittest.TestCase):
         self.assertNotIn("uptime_seconds", report_data["volatile"])
         json.dumps(report_data, allow_nan=False)
 
+    def test_negative_uptime_is_reported_as_failed_instead_of_violating_the_schema(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            uptime_path = Path(tmp) / "uptime"
+            uptime_path.write_text("-1.0 123.4\n", encoding="utf-8")
+            report_data = report.build_report(FixtureRunner(), FIXTURES / "os-release", uptime_path=uptime_path)
+        states = {item["collector"]: item["state"] for item in report_data["collection_status"]}
+        self.assertEqual(states["uptime"], "failed")
+        self.assertNotIn("uptime_seconds", report_data["volatile"])
+
     def test_collect_removes_temporary_file_and_output_directory_on_write_failure(self):
         real_named_temp_file = tempfile.NamedTemporaryFile
 

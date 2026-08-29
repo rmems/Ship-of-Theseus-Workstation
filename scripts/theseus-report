@@ -233,7 +233,7 @@ def build_report(
     except (OSError, ValueError, IndexError):
         collection_status.append(status("uptime", "unavailable", "source_unavailable"))
     else:
-        if math.isfinite(uptime_seconds):
+        if math.isfinite(uptime_seconds) and uptime_seconds >= 0:
             report["volatile"]["uptime_seconds"] = uptime_seconds
             collection_status.append(status("uptime", "available"))
         else:
