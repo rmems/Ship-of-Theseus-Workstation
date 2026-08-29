@@ -101,12 +101,21 @@
         "type": "object",
         "required": ["collector", "state"],
         "properties": {
-          "collector": {"type": "string"},
+          "collector": {"enum": ["os_release", "lscpu", "free", "lsblk", "nvidia_smi", "nvcc", "uptime"]},
           "state": {"enum": ["available", "unavailable", "failed", "omitted"]},
           "reason": {"enum": ["command_not_found", "command_failed", "source_unavailable", "unparseable_output"]}
         },
         "additionalProperties": false
-      }
+      },
+      "allOf": [
+        {"contains": {"properties": {"collector": {"const": "os_release"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "lscpu"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "free"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "lsblk"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "nvidia_smi"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "nvcc"}}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"properties": {"collector": {"const": "uptime"}}}, "minContains": 1, "maxContains": 1}
+      ]
     }
   },
   "additionalProperties": false

@@ -1,1 +1,1 @@
-{"blockdevices":[{"name":"nvme0n1","type":"disk","size":2000398934016,"model":"Crucial T700","tran":"nvme","serial":"SECRET-SERIAL","mountpoints":["/home/raulmc"]},{"name":"nvme1n1","type":"disk","size":2000398934016,"model":"Fanxiang PCIe 4.0","tran":"nvme","uuid":"SECRET-UUID"}]}
+{"blockdevices":[{"name":"nvme0n1","type":"disk","size":2000398934016,"model":"Crucial T700","tran":"nvme","serial":"SECRET-SERIAL","mountpoints":["/home/test-user"]},{"name":"nvme1n1","type":"disk","size":2000398934016,"model":"Fanxiang PCIe 4.0","tran":"nvme","uuid":"SECRET-UUID"}]}

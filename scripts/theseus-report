@@ -45,7 +45,10 @@ class CommandResult:
 
 class CommandRunner:
     def run(self, *args: str) -> CommandResult:
-        completed = subprocess.run(args, capture_output=True, text=True, check=False, timeout=COMMAND_TIMEOUT_SECONDS)
+        env = {**os.environ, "LC_ALL": "C", "LANG": "C"}
+        completed = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=COMMAND_TIMEOUT_SECONDS, env=env
+        )
         return CommandResult(completed.returncode, completed.stdout, completed.stderr)
 
 
@@ -181,7 +184,11 @@ def required_command(runner: CommandRunner, *args: str) -> CommandResult:
     return result
 
 
-def build_report(runner: CommandRunner, os_release_path: Path = Path("/etc/os-release")) -> dict[str, Any]:
+def build_report(
+    runner: CommandRunner,
+    os_release_path: Path = Path("/etc/os-release"),
+    uptime_path: Path = Path("/proc/uptime"),
+) -> dict[str, Any]:
     collection_status: list[dict[str, str]] = []
     os_release = parse_os_release(os_release_path.read_text(encoding="utf-8"))
     lscpu = required_command(runner, "lscpu", "--json")
@@ -221,8 +228,8 @@ def build_report(runner: CommandRunner, os_release_path: Path = Path("/etc/os-re
         "collection_status": collection_status,
     }
     try:
-        uptime_seconds = float(Path("/proc/uptime").read_text(encoding="utf-8").split()[0])
-    except (FileNotFoundError, ValueError, IndexError):
+        uptime_seconds = float(uptime_path.read_text(encoding="utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
         collection_status.append(status("uptime", "unavailable", "source_unavailable"))
     else:
         report["volatile"]["uptime_seconds"] = uptime_seconds
@@ -248,7 +255,8 @@ def validate_report(report: Any) -> None:
         schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
         Draft202012Validator(schema, format_checker=FormatChecker()).validate(report)
     except (OSError, json.JSONDecodeError, ValidationError) as error:
-        raise ReportError(f"report does not satisfy the system-report schema: {error.message}") from error
+        reason = error.message if isinstance(error, ValidationError) else str(error)
+        raise ReportError(f"report does not satisfy the system-report schema: {reason}") from error
     forbidden = re.compile(r"(hostname|username|serial|uuid|ip_address|mac_address|mountpoint|path|token|secret)", re.IGNORECASE)
     for key in walk_keys(report):
         if forbidden.search(key):
@@ -286,7 +294,7 @@ def collect_command(args: argparse.Namespace) -> int:
     if out.exists():
         raise ReportError(f"refusing to reuse report output path: {out}")
     report = build_report(CommandRunner())
-    contents = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    contents = json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n"
     out.parent.mkdir(parents=True, exist_ok=True)
     try:
         out.mkdir()
@@ -309,8 +317,14 @@ def collect_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def reject_nonstandard_constant(token: str) -> float:
+    raise ValueError(f"report is not standard JSON: unexpected numeric constant {token!r}")
+
+
 def validate_command(args: argparse.Namespace) -> int:
-    report = json.loads(Path(args.report).read_text(encoding="utf-8"))
+    report = json.loads(
+        Path(args.report).read_text(encoding="utf-8"), parse_constant=reject_nonstandard_constant
+    )
     validate_report(report)
     print(f"valid: {args.report}")
     return 0

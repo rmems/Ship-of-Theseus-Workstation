@@ -4,6 +4,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,7 +45,7 @@ class TheseusReportTests(unittest.TestCase):
         self.assertEqual(report_data["identity"]["cpu"]["logical_cpus"], 32)
         self.assertEqual(report_data["identity"]["gpu"][0]["memory_total_bytes"], 16384 * 1024 * 1024)
         self.assertEqual(report_data["identity"]["cuda_toolkit_version"], "13.0")
-        for forbidden in ("SECRET-SERIAL", "SECRET-UUID", "/home/raulmc", "hostname", "mountpoints"):
+        for forbidden in ("SECRET-SERIAL", "SECRET-UUID", "/home/test-user", "hostname", "mountpoints"):
             self.assertNotIn(forbidden, serialized)
         report.validate_report(report_data)
 
@@ -101,6 +102,38 @@ class TheseusReportTests(unittest.TestCase):
         schema = json.loads((ROOT / "schemas" / "system-report.schema.json").read_text())
         self.assertEqual(schema["$schema"], "https://json-schema.org/draft/2020-12/schema")
         self.assertIn("collection_status", schema["required"])
+
+    def test_unreadable_uptime_source_is_reported_as_unavailable(self):
+        report_data = report.build_report(
+            FixtureRunner(), FIXTURES / "os-release", uptime_path=Path("/nonexistent/uptime")
+        )
+        states = {item["collector"]: item["state"] for item in report_data["collection_status"]}
+        self.assertEqual(states["uptime"], "unavailable")
+        self.assertNotIn("uptime_seconds", report_data["volatile"])
+
+    def test_schema_rejects_report_missing_a_known_collector_status(self):
+        report_data = report.build_report(FixtureRunner(), FIXTURES / "os-release")
+        report_data["collection_status"] = [
+            item for item in report_data["collection_status"] if item["collector"] != "nvcc"
+        ]
+        with self.assertRaises(report.ReportError):
+            report.validate_report(report_data)
+
+    def test_validate_report_wraps_schema_load_failure_without_crashing(self):
+        with mock.patch.object(report, "SCHEMA_PATH", Path("/nonexistent/schema.json")):
+            with self.assertRaises(report.ReportError):
+                report.validate_report({"schema_version": "1.0.0"})
+
+    def test_command_runner_forces_stable_locale(self):
+        with mock.patch("subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
+            report.CommandRunner().run("lscpu", "--json")
+        _, kwargs = run.call_args
+        self.assertEqual(kwargs["env"]["LC_ALL"], "C")
+
+    def test_json_loads_rejects_nonstandard_numeric_constants(self):
+        with self.assertRaises(ValueError):
+            json.loads('{"uptime_seconds": NaN}', parse_constant=report.reject_nonstandard_constant)
 
 
 if __name__ == "__main__":
