@@ -71,12 +71,12 @@ class TheseusReportTests(unittest.TestCase):
             report.validate_report(malformed)
 
     def test_parse_lscpu_rejects_malformed_json_structures_cleanly(self):
-        for malformed in ('{"lscpu": null}', "[]", "42"):
+        for malformed in ('{"lscpu": null}', "[]", "42", "not json"):
             with self.assertRaises(report.ReportError, msg=f"malformed={malformed!r}"):
                 report.parse_lscpu(malformed)
 
     def test_parse_lsblk_rejects_malformed_json_structures_cleanly(self):
-        for malformed in ('{"blockdevices": null}', "[]", "42"):
+        for malformed in ('{"blockdevices": null}', "[]", "42", "not json"):
             with self.assertRaises(report.ReportError, msg=f"malformed={malformed!r}"):
                 report.parse_lsblk(malformed)
 

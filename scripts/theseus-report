@@ -73,7 +73,10 @@ def parse_os_release(contents: str) -> dict[str, str]:
 
 
 def parse_lscpu(contents: str) -> dict[str, Any]:
-    data = json.loads(contents)
+    try:
+        data = json.loads(contents)
+    except json.JSONDecodeError as error:
+        raise ReportError("lscpu did not provide valid JSON") from error
     if not isinstance(data, dict) or not isinstance(data.get("lscpu"), list):
         raise ReportError("lscpu did not provide the expected JSON structure")
     fields = {
@@ -115,7 +118,10 @@ def parse_free(contents: str) -> dict[str, int]:
 
 
 def parse_lsblk(contents: str) -> list[dict[str, Any]]:
-    data = json.loads(contents)
+    try:
+        data = json.loads(contents)
+    except json.JSONDecodeError as error:
+        raise ReportError("lsblk did not provide valid JSON") from error
     if not isinstance(data, dict) or not isinstance(data.get("blockdevices"), list):
         raise ReportError("lsblk did not provide the expected JSON structure")
     devices: list[dict[str, Any]] = []
