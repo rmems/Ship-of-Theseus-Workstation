@@ -1,0 +1,22 @@
+scripts/theseus-report
+  s_ed6918a226fce3::t_d51ed6ec7c3cbd 76-79
+  s_ed6918a226fce3::t_51163aa56481e1 121-124
+tests/test_theseus_report.py
+  s_ed6918a226fce3::t_3718532cd85edf 74,79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e78faa325a30e92c90611b43a739214e81821fcb",
+  "prompts": {},
+  "sessions": {
+    "s_ed6918a226fce3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f376c144-4005-4545-988a-9ef020fdd0ee",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
