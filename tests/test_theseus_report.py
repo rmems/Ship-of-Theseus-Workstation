@@ -70,6 +70,16 @@ class TheseusReportTests(unittest.TestCase):
         with self.assertRaises(report.ReportError):
             report.validate_report(malformed)
 
+    def test_parse_lscpu_rejects_malformed_json_structures_cleanly(self):
+        for malformed in ('{"lscpu": null}', "[]", "42"):
+            with self.assertRaises(report.ReportError, msg=f"malformed={malformed!r}"):
+                report.parse_lscpu(malformed)
+
+    def test_parse_lsblk_rejects_malformed_json_structures_cleanly(self):
+        for malformed in ('{"blockdevices": null}', "[]", "42"):
+            with self.assertRaises(report.ReportError, msg=f"malformed={malformed!r}"):
+                report.parse_lsblk(malformed)
+
     def test_optional_unparseable_or_unlaunchable_collectors_do_not_abort(self):
         class BrokenOptionalRunner(FixtureRunner):
             def run(self, *args):

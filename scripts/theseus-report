@@ -74,9 +74,11 @@ def parse_os_release(contents: str) -> dict[str, str]:
 
 def parse_lscpu(contents: str) -> dict[str, Any]:
     data = json.loads(contents)
+    if not isinstance(data, dict) or not isinstance(data.get("lscpu"), list):
+        raise ReportError("lscpu did not provide the expected JSON structure")
     fields = {
         item.get("field", "").strip().rstrip(":"): str(item.get("data", "")).strip()
-        for item in data.get("lscpu", [])
+        for item in data["lscpu"]
         if isinstance(item, dict)
     }
 
@@ -114,8 +116,10 @@ def parse_free(contents: str) -> dict[str, int]:
 
 def parse_lsblk(contents: str) -> list[dict[str, Any]]:
     data = json.loads(contents)
+    if not isinstance(data, dict) or not isinstance(data.get("blockdevices"), list):
+        raise ReportError("lsblk did not provide the expected JSON structure")
     devices: list[dict[str, Any]] = []
-    for entry in data.get("blockdevices", []):
+    for entry in data["blockdevices"]:
         if not isinstance(entry, dict) or entry.get("type") != "disk":
             continue
         size = entry.get("size")
