@@ -270,16 +270,16 @@ def build_report(
 
 
 def validate_report(report: Any) -> None:
+    forbidden = re.compile(r"(hostname|username|serial|uuid|ip_address|mac_address|mountpoint|path|token|secret)", re.IGNORECASE)
+    for key in walk_keys(report):
+        if forbidden.search(key):
+            raise ReportError(f"sensitive field is not permitted: {key}")
     try:
         schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
         Draft202012Validator(schema, format_checker=FormatChecker()).validate(report)
     except (OSError, json.JSONDecodeError, ValidationError) as error:
         reason = error.message if isinstance(error, ValidationError) else str(error)
         raise ReportError(f"report does not satisfy the system-report schema: {reason}") from error
-    forbidden = re.compile(r"(hostname|username|serial|uuid|ip_address|mac_address|mountpoint|path|token|secret)", re.IGNORECASE)
-    for key in walk_keys(report):
-        if forbidden.search(key):
-            raise ReportError(f"sensitive field is not permitted: {key}")
 
 
 def set_status(collection_status: list[dict[str, str]], name: str, state: str, reason: str) -> None:
@@ -320,14 +320,14 @@ def collect_command(args: argparse.Namespace) -> int:
     except FileExistsError as error:
         raise ReportError(f"refusing to reuse report output path: {out}") from error
     destination = out / "system-report.json"
+    temporary_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=out, delete=False) as temporary:
             temporary_path = Path(temporary.name)
             temporary.write(contents)
         temporary_path.replace(destination)
     except OSError:
-        temporary_path = locals().get("temporary_path")
-        if isinstance(temporary_path, Path):
+        if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
         destination.unlink(missing_ok=True)
         out.rmdir()

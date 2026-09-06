@@ -61,7 +61,7 @@ class TheseusReportTests(unittest.TestCase):
     def test_validator_rejects_sensitive_field_and_missing_required_field(self):
         valid = report.build_report(FixtureRunner(), FIXTURES / "os-release")
         valid["identity"]["hostname"] = "not-allowed"
-        with self.assertRaises(report.ReportError):
+        with self.assertRaisesRegex(report.ReportError, "sensitive field is not permitted"):
             report.validate_report(valid)
         with self.assertRaises(report.ReportError):
             report.validate_report({"schema_version": "1.0.0"})
