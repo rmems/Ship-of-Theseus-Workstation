@@ -1,0 +1,24 @@
+.github/workflows/system-report.yml
+  s_ed6918a226fce3::t_feafba7a4f9b74 12-15,19
+scripts/theseus-report
+  s_ed6918a226fce3::t_1e802f75177449 323,330
+  s_ed6918a226fce3::t_f6ccea08fd6e6e 273-276
+tests/test_theseus_report.py
+  s_ed6918a226fce3::t_2bf07ad22299c6 64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1e33ec0a5e758b6deea55deffae86b31c59b922b",
+  "prompts": {},
+  "sessions": {
+    "s_ed6918a226fce3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f376c144-4005-4545-988a-9ef020fdd0ee",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
