@@ -3,10 +3,13 @@ set -uo pipefail
 
 out=${1:-benchmarks/runner-health-$(date -u +%Y%m%dT%H%M%SZ)-$$.txt}
 mkdir -p "$(dirname "$out")"
-if ! (set -o noclobber; : > "$out") 2>/dev/null; then
+set -o noclobber
+if ! { exec 3> "$out"; } 2>/dev/null; then
+  set +o noclobber
   printf 'Refusing to reuse runner-health output path: %s\n' "$out" >&2
   exit 2
 fi
+set +o noclobber
 
 min_free_gib=${RUNNER_HEALTH_MIN_FREE_GIB:-20}
 if [[ ! $min_free_gib =~ ^[0-9]+$ ]]; then
@@ -75,6 +78,6 @@ run_health_check() {
   printf 'All runner-health checks passed.\n'
 }
 
-run_health_check 2>&1 | tee "$out"
+run_health_check 2>&1 | tee /dev/fd/3
 statuses=("${PIPESTATUS[@]}")
 (( statuses[0] == 0 && statuses[1] == 0 ))
