@@ -1,0 +1,21 @@
+README.md
+  s_ed6918a226fce3::t_5aafaf9289d552 153-154
+docs/workload-catalog.md
+  s_ed6918a226fce3::t_0d288f60831350 3-10,13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "4881cac3f5ef92335298327c89c355c212edecd4",
+  "prompts": {},
+  "sessions": {
+    "s_ed6918a226fce3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f376c144-4005-4545-988a-9ef020fdd0ee",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
