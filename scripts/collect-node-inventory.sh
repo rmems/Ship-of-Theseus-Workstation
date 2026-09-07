@@ -8,7 +8,14 @@ if [[ -e $out ]]; then
 fi
 mkdir -p "$(dirname "$out")"
 mkdir "$out"
-trap '(( $? != 0 )) && rm -rf "$out"' EXIT
+out_inode=$(stat -c %i "$out")
+cleanup_on_failure() {
+  local status=$?
+  if (( status != 0 )) && [[ $(stat -c %i "$out" 2>/dev/null) == "$out_inode" ]]; then
+    rm -rf "$out"
+  fi
+}
+trap cleanup_on_failure EXIT
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "$out/collected_at_utc.txt"
 hostnamectl 2>/dev/null > "$out/hostnamectl.txt" || hostname > "$out/hostname.txt"
