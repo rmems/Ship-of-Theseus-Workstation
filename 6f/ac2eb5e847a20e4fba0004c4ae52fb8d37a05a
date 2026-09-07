@@ -1,0 +1,20 @@
+scripts/runner-health.sh
+  s_13ccb22970a288::t_abe52e5e10fb4f 6-8,12
+  s_13ccb22970a288::t_eb67b1770b2718 81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "6fac2eb5e847a20e4fba0004c4ae52fb8d37a05a",
+  "prompts": {},
+  "sessions": {
+    "s_13ccb22970a288": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f6c9792-c996-4e11-a1b5-246886d0f34b",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
