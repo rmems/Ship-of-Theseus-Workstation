@@ -31,7 +31,7 @@ check_executable() {
 check_free_space() {
   local available_kib
   available_kib=$(df -Pk "$work_dir" 2>/dev/null | awk 'NR==2 {print $4}')
-  [[ -n $available_kib ]] && (( available_kib / 1024 / 1024 >= min_free_gib ))
+  [[ -n $available_kib ]] && (( available_kib / 1024 / 1024 >= 10#$min_free_gib ))
 }
 check_runner_registered() {
   [[ -d "$runner_dir" && -f "$runner_dir/.runner" ]]
