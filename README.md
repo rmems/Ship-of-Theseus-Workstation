@@ -119,7 +119,7 @@ This repository is the **infrastructure record** for the node. As the environmen
 - experiment-environment provenance and reproducibility notes;
 - documented failure modes, upgrades, and migration history.
 
-The reproducible-node baseline is documented in [`docs/node-baseline.md`](docs/node-baseline.md), with companion runbooks for [`self-hosted-runner.md`](docs/self-hosted-runner.md), [`backup-recovery.md`](docs/backup-recovery.md), [`workload-catalog.md`](docs/workload-catalog.md), and [`change-log.md`](docs/change-log.md). Runtime inventory, verification, benchmark, and telemetry collectors live under `scripts/`; they produce timestamped evidence without embedding machine-specific results in the README.
+The reproducible-node baseline is documented in [`docs/node-baseline.md`](docs/node-baseline.md), with companion runbooks for [`self-hosted-runner.md`](docs/self-hosted-runner.md) and [`backup-recovery.md`](docs/backup-recovery.md), plus reference records in [`workload-catalog.md`](docs/workload-catalog.md) and [`change-log.md`](docs/change-log.md). Runtime inventory, verification, benchmark, and telemetry collectors live under `scripts/`; they produce timestamped evidence without embedding machine-specific results in the README.
 
 The canonical sanitized execution-environment artifact is documented in [`docs/system-report.md`](docs/system-report.md). It uses a versioned schema and intentionally excludes raw inventory and identifying host details.
 
