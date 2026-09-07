@@ -30,7 +30,7 @@ check_free_space() {
   [[ -n $available_kib ]] && (( available_kib / 1024 / 1024 >= min_free_gib ))
 }
 check_runner_registered() {
-  [[ -d $runner_dir && -f $runner_dir/.runner ]]
+  [[ -d "$runner_dir" && -f "$runner_dir/.runner" ]]
 }
 check_service_active() {
   systemctl is-active --quiet "$service_name"
