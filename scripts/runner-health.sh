@@ -9,6 +9,10 @@ if ! (set -o noclobber; : > "$out") 2>/dev/null; then
 fi
 
 min_free_gib=${RUNNER_HEALTH_MIN_FREE_GIB:-20}
+if [[ ! $min_free_gib =~ ^[0-9]+$ ]]; then
+  printf 'RUNNER_HEALTH_MIN_FREE_GIB must be a non-negative integer: %s\n' "$min_free_gib" >&2
+  exit 2
+fi
 work_dir=${RUNNER_HEALTH_WORK_DIR:-.}
 runner_dir=${RUNNER_HEALTH_RUNNER_DIR:-}
 service_name=${RUNNER_HEALTH_SERVICE_NAME:-}

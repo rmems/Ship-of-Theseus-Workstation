@@ -11,7 +11,7 @@ The workstation can provide a Fedora/Linux runner for GPU, CUDA, FPGA/RTL, and l
 5. Record runner OS, kernel, driver, CUDA, and relevant toolchain versions in the job artifact.
 6. Stop or drain the runner before driver, kernel, firmware, or storage maintenance.
 7. Run one job at a time per runner identity; this node is not configured for parallel job execution, so concurrent workflow triggers queue rather than run simultaneously.
-8. Treat the runner's `_work` directory as disposable. Jobs should not depend on artifacts surviving between runs, and operators may clear it during maintenance without coordinating with in-flight research work.
+8. Treat the runner's `_work` directory as disposable once the runner is stopped or drained per rule 6 above — never while a job may still be running. Jobs should not depend on artifacts surviving between runs, and during a declared maintenance window operators may clear it without coordinating with separate research work on the node.
 
 ## Required toolchains
 
