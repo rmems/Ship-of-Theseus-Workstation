@@ -1,0 +1,22 @@
+.github/workflows/portable-ci.yml
+  s_a17671727bf684::t_af1b3c62cb5964 1-25
+README.md
+  s_a17671727bf684::t_4dceb400376ba1 126-132
+  s_a17671727bf684::t_81684ac8700836 160-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "79cfd21ab4b549c6a55cde08bc4235a8e13b4e12",
+  "prompts": {},
+  "sessions": {
+    "s_a17671727bf684": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "32e1c7a0-cff8-4d55-bd11-9f539d8f44a5",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
