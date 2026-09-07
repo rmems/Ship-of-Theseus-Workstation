@@ -220,6 +220,7 @@ def build_report(
     nvcc, nvcc_status = optional_command(runner, "nvcc", "nvcc", "--version")
     collection_status.append(nvcc_status)
 
+    memory = parse_free(free.stdout)
     collected_at = utc_now()
     report: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -232,10 +233,10 @@ def build_report(
             "operating_system": os_release,
             "kernel_release": platform.release(),
             "cpu": parse_lscpu(lscpu.stdout),
-            "memory": {"total_bytes": parse_free(free.stdout)["total_bytes"]},
+            "memory": {"total_bytes": memory["total_bytes"]},
             "storage": parse_lsblk(lsblk.stdout),
         },
-        "volatile": {"memory_available_bytes": parse_free(free.stdout)["available_bytes"]},
+        "volatile": {"memory_available_bytes": memory["available_bytes"]},
         "collection_status": collection_status,
     }
     try:
