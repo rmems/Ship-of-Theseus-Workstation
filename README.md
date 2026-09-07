@@ -154,6 +154,8 @@ The August 2026 repositioning of this repository—from a general workstation/po
 
 The sanitized system-report tool (`scripts/theseus-report`, #13) was architected and implemented by **GPT-5.6 Terra by OpenAI**; its post-review security and correctness hardening—command timeouts and locale-stable parsing, per-collector schema completeness, CI credential/action pinning, and NaN-safe JSON handling—was implemented by **Claude Sonnet 5 by Anthropic**.
 
+The workload catalog's execution-mode and provenance-hook columns (#10) were added by **Claude Sonnet 5 by Anthropic**, drawn from each referenced repository's public workflow files.
+
 AI-assisted contributions are attributed explicitly when they materially shape repository documentation or engineering decisions.
 
 ## 📄 License and third-party tools
