@@ -156,7 +156,6 @@ The sanitized system-report tool (`scripts/theseus-report`, #13) was architected
 
 The infrastructure change-log convention (`docs/change-log.md`, #9) was initialized by **Claude Sonnet 5 by Anthropic**, left empty of entries since no verified historical hardware/environment changes were available to record accurately.
 
-The sanitized system-report tool (`scripts/theseus-report`, #13) was architected and implemented by **GPT-5.6 Terra by OpenAI**; its post-review security and correctness hardening—command timeouts and locale-stable parsing, per-collector schema completeness, CI credential/action pinning, and NaN-safe JSON handling—was implemented by **Claude Sonnet 5 by Anthropic**.
 
 AI-assisted contributions are attributed explicitly when they materially shape repository documentation or engineering decisions.
 
