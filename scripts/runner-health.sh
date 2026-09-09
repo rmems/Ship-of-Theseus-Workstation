@@ -2,50 +2,95 @@
 set -uo pipefail
 
 out=${1:-benchmarks/runner-health-$(date -u +%Y%m%dT%H%M%SZ)-$$.txt}
-mkdir -p "$(dirname "$out")"
-set -o noclobber
-if ! { exec 3> "$out"; } 2>/dev/null; then
-  set +o noclobber
-  printf 'Refusing to reuse runner-health output path: %s\n' "$out" >&2
-  exit 2
-fi
-set +o noclobber
-
 min_free_gib=${RUNNER_HEALTH_MIN_FREE_GIB:-20}
-if [[ ! $min_free_gib =~ ^[0-9]+$ ]]; then
-  printf 'RUNNER_HEALTH_MIN_FREE_GIB must be a non-negative integer: %s\n' "$min_free_gib" >&2
-  exit 2
-fi
 work_dir=${RUNNER_HEALTH_WORK_DIR:-.}
 runner_dir=${RUNNER_HEALTH_RUNNER_DIR:-}
 service_name=${RUNNER_HEALTH_SERVICE_NAME:-}
 
-failures=0
+if [[ ! $min_free_gib =~ ^[0-9]+$ ]]; then
+  printf 'RUNNER_HEALTH_MIN_FREE_GIB must be a non-negative integer: %s\n' "$min_free_gib" >&2
+  exit 2
+fi
+
+# Keep this bound strict enough to prevent integer-range wrap in shell arithmetic.
+if (( min_free_gib > 1048576 )); then
+  printf 'RUNNER_HEALTH_MIN_FREE_GIB is too large: %s GiB\n' "$min_free_gib" >&2
+  exit 2
+fi
+
+if ! mkdir -p "$(dirname "$out")"; then
+  printf 'Cannot create runner-health output directory: %s\n' "$(dirname "$out")" >&2
+  exit 2
+fi
+
+if [[ -e $out ]]; then
+  printf 'Refusing to reuse runner-health output path: %s\n' "$out" >&2
+  exit 2
+fi
+
+if ! exec 3> "$out"; then
+  printf 'Cannot create runner-health output path: %s\n' "$out" >&2
+  exit 2
+fi
+
+log() {
+  printf '%s\n' "$1"
+  printf '%s\n' "$1" >&3
+}
+
 check() {
-  local label=$1; shift
-  if "$@" >/dev/null 2>&1; then printf 'PASS  %s\n' "$label"; else printf 'FAIL  %s\n' "$label"; failures=$((failures + 1)); fi
+  local label=$1
+  local status_file
+  shift
+
+  status_file=$(mktemp)
+  if "$@" >"$status_file" 2>&1; then
+    log "PASS  $label"
+    rm -f "$status_file"
+    return 0
+  fi
+  local status=$?
+  log "FAIL  $label"
+  while IFS= read -r line; do
+    log "  $line"
+  done <"$status_file"
+  rm -f "$status_file"
+  failures=$((failures + 1))
+  return "$status"
 }
+
 skip() {
-  printf 'SKIP  %s\n' "$1"
+  log "SKIP  $1"
 }
+
 check_executable() {
   command -v "$1" >/dev/null 2>&1
 }
+
 check_free_space() {
   local available_kib
+  local status=1
+
   available_kib=$(df -Pk "$work_dir" 2>/dev/null | awk 'NR==2 {print $4}')
-  [[ -n $available_kib ]] && (( available_kib / 1024 / 1024 >= 10#$min_free_gib ))
+  if [[ -n $available_kib ]] && (( available_kib / 1024 / 1024 >= 10#$min_free_gib )); then
+    status=0
+  fi
+  return "$status"
 }
+
 check_runner_registered() {
   [[ -d "$runner_dir" && -f "$runner_dir/.runner" ]]
 }
+
 check_service_active() {
   systemctl is-active --quiet "$service_name"
 }
 
+failures=0
 run_health_check() {
-  printf 'collected_at_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf 'command_family=runner-health\n\n'
+  log "collected_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  log "command_family=runner-health"
+  log ""
 
   for exe in git bash python3; do
     check "required executable: $exe" check_executable "$exe"
@@ -72,12 +117,14 @@ run_health_check() {
   fi
 
   if (( failures )); then
-    printf '%s runner-health check(s) failed.\n' "$failures" >&2
+    log "$failures runner-health check(s) failed."
     return 1
   fi
-  printf 'All runner-health checks passed.\n'
+  log "All runner-health checks passed."
+  return 0
 }
 
-run_health_check 2>&1 | tee /dev/fd/3
-statuses=("${PIPESTATUS[@]}")
-(( statuses[0] == 0 && statuses[1] == 0 ))
+run_health_check
+status=$?
+exec 3>&-
+exit "$status"

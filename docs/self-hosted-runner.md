@@ -21,12 +21,22 @@ At minimum: `git`, `bash`, and `python3`. Individual workflows add project-speci
 
 `scripts/runner-health.sh [output-path]` checks the runner-relevant subset of node health: required executables, free storage under a configurable work directory, GPU visibility, and — only when explicitly opted into via environment variables — whether a runner installation is registered and whether its service is active. It never reads runner credential or registration file contents, only their presence, and it refuses to overwrite an existing output path. Opt-in checks are skipped (not failed) when left unconfigured, since not every runner needs a GPU or runs as a system service.
 
+Exit codes are:
+
+- `0`: all checks passed
+- `1`: one or more checks failed (report written)
+- `2`: configuration or output-path failure (no report written)
+
+By default, reports are written to `benchmarks/runner-health-<UTC timestamp>-<pid>.txt`. The path is claimed only after basic validation succeeds, and rerunning with the same output path after a config/setup failure is supported because the path is never reserved first.
+
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `RUNNER_HEALTH_MIN_FREE_GIB` | `20` | Minimum free space required under the work directory |
 | `RUNNER_HEALTH_WORK_DIR` | `.` | Directory whose filesystem is checked for free space |
 | `RUNNER_HEALTH_RUNNER_DIR` | unset | If set, verify a runner is registered at this path (checks for a `.runner` file) |
 | `RUNNER_HEALTH_SERVICE_NAME` | unset | If set, verify this systemd service is active |
+
+The script documents the current state as written at each run and never alters `PATH` or other process-wide environment state.
 
 Run it after driver, kernel, or runner-version updates, and as part of the recovery procedure below.
 
