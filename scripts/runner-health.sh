@@ -24,7 +24,7 @@ if ! mkdir -p "$(dirname "$out")"; then
 fi
 
 if [[ -e $out ]]; then
-  printf 'Refusing to reuse runner-health output path: %s\n' "$out" >&2
+  printf 'Refusing to overwrite existing runner-health output path: %s\n' "$out" >&2
   exit 2
 fi
 
