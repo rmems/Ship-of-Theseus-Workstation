@@ -1,0 +1,25 @@
+README.md
+  s_ed6918a226fce3::t_a5fd1f25be6cc7 153
+  s_ed6918a226fce3::t_5aafaf9289d552 154
+docs/workload-catalog.md
+  s_ed6918a226fce3::t_0d288f60831350 3-4,6-9,13
+  s_ed6918a226fce3::t_3dbc77df304396 10
+  s_ed6918a226fce3::t_2ca694bdb219cb 5
+  s_ed6918a226fce3::t_bbf068541c23ff 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e63d99310a3386044d91f068b68aaf6d927bb6d2",
+  "prompts": {},
+  "sessions": {
+    "s_ed6918a226fce3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f376c144-4005-4545-988a-9ef020fdd0ee",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
