@@ -1,0 +1,43 @@
+tests/fixtures/system-report/os-release
+  s_d1b37afc39feae::t_5cb5374396a903 1-5
+scripts/theseus-report
+  s_d1b37afc39feae::t_5cb5374396a903 1-375
+tests/test_theseus_report.py
+  s_d1b37afc39feae::t_5cb5374396a903 1-200
+.github/workflows/system-report.yml
+  s_d1b37afc39feae::t_5cb5374396a903 1-32
+THIRD_PARTY_NOTICES.md
+  s_d1b37afc39feae::t_5cb5374396a903 18
+tests/fixtures/system-report/lscpu.json
+  s_d1b37afc39feae::t_5cb5374396a903 1
+docs/system-report.md
+  s_d1b37afc39feae::t_5cb5374396a903 1-47
+tests/fixtures/system-report/lsblk.json
+  s_d1b37afc39feae::t_5cb5374396a903 1
+tests/fixtures/system-report/nvcc.txt
+  s_d1b37afc39feae::t_5cb5374396a903 1-2
+requirements.txt
+  s_d1b37afc39feae::t_5cb5374396a903 1
+tests/fixtures/system-report/free.txt
+  s_d1b37afc39feae::t_5cb5374396a903 1-3
+tests/fixtures/system-report/nvidia.csv
+  s_d1b37afc39feae::t_5cb5374396a903 1
+schemas/system-report.schema.json
+  s_d1b37afc39feae::t_5cb5374396a903 1-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1128e8c52b08c375c8defd064a6c9b2a7f5a2c09",
+  "prompts": {},
+  "sessions": {
+    "s_d1b37afc39feae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08423-bb05-7302-a60c-2b5b41cde0fc",
+        "model": "gpt-5.3-codex-spark"
+      },
+      "human_author": "Raul Montoya Cardenas <montoyaraul34@gmail.com>"
+    }
+  }
+}
