@@ -119,7 +119,7 @@ This repository is the **infrastructure record** for the node. As the environmen
 - experiment-environment provenance and reproducibility notes;
 - documented failure modes, upgrades, and migration history.
 
-The reproducible-node baseline is documented in [`docs/node-baseline.md`](docs/node-baseline.md), with companion runbooks for [`self-hosted-runner.md`](docs/self-hosted-runner.md), [`backup-recovery.md`](docs/backup-recovery.md), and [`workload-catalog.md`](docs/workload-catalog.md). Runtime inventory, verification, benchmark, and telemetry collectors live under `scripts/`; they produce timestamped evidence without embedding machine-specific results in the README.
+The reproducible-node baseline is documented in [`docs/node-baseline.md`](docs/node-baseline.md), with companion runbooks for [`self-hosted-runner.md`](docs/self-hosted-runner.md) and [`backup-recovery.md`](docs/backup-recovery.md), plus reference records in [`workload-catalog.md`](docs/workload-catalog.md) and [`change-log.md`](docs/change-log.md). Runtime inventory, verification, benchmark, and telemetry collectors live under `scripts/`; they produce timestamped evidence without embedding machine-specific results in the README.
 
 The canonical sanitized execution-environment artifact is documented in [`docs/system-report.md`](docs/system-report.md). It uses a versioned schema and intentionally excludes raw inventory and identifying host details.
 
@@ -153,6 +153,9 @@ These directories represent the intended infrastructure layout and will be added
 The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Sol, GPT-5.6 Luna, and GPT-5.6 Terra by OpenAI**. GPT-5.6 Sol, GPT-5.6 Luna, and GPT-5.6 Terra contributed repository-scope analysis, information architecture, README drafting/refinement, and integration of the project's origin story into the current infrastructure narrative; final project direction and repository ownership remain with **rmems**.
 
 The sanitized system-report tool (`scripts/theseus-report`, #13) was architected and implemented by **GPT-5.6 Terra by OpenAI**; its post-review security and correctness hardening—command timeouts and locale-stable parsing, per-collector schema completeness, CI credential/action pinning, and NaN-safe JSON handling—was implemented by **Claude Sonnet 5 by Anthropic**.
+
+The infrastructure change-log convention (`docs/change-log.md`, #9) was initialized by **Claude Sonnet 5 by Anthropic**, left empty of entries since no verified historical hardware/environment changes were available to record accurately.
+
 
 AI-assisted contributions are attributed explicitly when they materially shape repository documentation or engineering decisions.
 
