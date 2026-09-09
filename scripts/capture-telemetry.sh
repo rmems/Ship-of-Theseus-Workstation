@@ -12,11 +12,14 @@ if [[ ! $duration =~ ^(0|[1-9][0-9]*)$ ]]; then
   exit 2
 fi
 mkdir -p "$(dirname "$out")"
-if ! (set -o noclobber; : > "$out") 2>/dev/null; then
+set -o noclobber
+if ! { exec 3> "$out"; } 2>/dev/null; then
+  set +o noclobber
   printf 'Refusing to reuse telemetry output path: %s\n' "$out" >&2
   exit 2
 fi
-printf 'timestamp_utc,gpu_temperature_c,gpu_power_w,gpu_utilization_pct,gpu_memory_used_mib,cpu_temperature_c\n' > "$out"
+set +o noclobber
+printf 'timestamp_utc,gpu_temperature_c,gpu_power_w,gpu_utilization_pct,gpu_memory_used_mib,cpu_temperature_c\n' >&3
 end=$(( $(date +%s) + duration ))
 while (( $(date +%s) < end )); do
   timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -33,7 +36,7 @@ while (( $(date +%s) < end )); do
     }
   ' || true)
   while IFS= read -r gpu_row; do
-    printf '%s,%s,%s\n' "$timestamp" "$gpu_row" "${cpu:-}" >> "$out"
+    printf '%s,%s,%s\n' "$timestamp" "$gpu_row" "${cpu:-}" >&3
   done <<< "$gpu"
   remaining=$((end - $(date +%s)))
   (( remaining <= 0 )) && break
