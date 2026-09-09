@@ -129,8 +129,8 @@ The repository should stay narrow: application-specific code belongs in its own 
 
 Validation is split into two tiers so infrastructure PRs get deterministic checks without requiring this workstation's hardware:
 
-- **Portable CI** ([`.github/workflows/portable-ci.yml`](.github/workflows/portable-ci.yml)) — hardware-independent checks (ShellCheck today; JSON Schema/fixture/unit-test validation as those contracts land) that run on every PR targeting `main`, on ordinary GitHub-hosted runners. It never assumes a GPU, CUDA, Vivado, or this node's filesystem layout, so contributors without this hardware can run the same checks locally.
-- **Hardware gates** — GPU/CUDA/runner-specific validation that only makes sense on the self-hosted node. These land alongside the tools they validate rather than in the portable workflow; see [`docs/self-hosted-runner.md`](docs/self-hosted-runner.md) for the runner's own health check.
+- **Portable CI** ([`.github/workflows/portable-ci.yml`](.github/workflows/portable-ci.yml)) runs on ordinary GitHub-hosted runners for pull requests targeting `main` and `main` pushes. It runs ShellCheck plus the existing `system-report` schema/fixture/unit-test checks that are already defined in `.github/workflows/system-report.yml`.
+- **Hardware gates** — GPU/CUDA/runner-specific validation that only makes sense on the self-hosted node. These land alongside the tools they validate rather than in the portable workflow; see [`docs/self-hosted-runner.md`](docs/self-hosted-runner.md) for runner operations and recovery documentation.
 
 ## 📐 Engineering principles
 
