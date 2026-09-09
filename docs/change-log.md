@@ -35,7 +35,7 @@ Each entry records:
   issue/PR references, when they exist
 
 ```markdown
-### 2026-MM-DD — Short title
+### YYYY-MM-DD — Short title
 
 - **Change:**
 - **Reason:**
