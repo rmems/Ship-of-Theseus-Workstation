@@ -1,0 +1,5 @@
+NAME="Fedora Linux"
+ID=fedora
+VERSION_ID=43
+PRETTY_NAME="Fedora Linux 43 (Workstation Edition)"
+HOME_URL="https://fedoraproject.org/"

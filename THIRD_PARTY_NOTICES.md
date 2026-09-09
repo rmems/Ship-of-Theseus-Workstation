@@ -15,6 +15,7 @@ code into this repository.
 | [fio](https://github.com/axboe/fio) | Operator-selected storage benchmarking | GNU General Public License, version 2; upstream [COPYING](https://github.com/axboe/fio/blob/master/COPYING) |
 | [stress-ng](https://github.com/ColinIanKing/stress-ng) | Operator-selected CPU/memory stress workloads | GNU General Public License, version 2; upstream [COPYING](https://github.com/ColinIanKing/stress-ng/blob/master/COPYING) |
 | NVIDIA `nvidia-smi` and CUDA tooling | Optional GPU/runtime queries | Not redistributed here; governed by NVIDIA's applicable distribution terms |
+| [jsonschema](https://github.com/python-jsonschema/jsonschema) | Draft 2020-12 report-schema validation | MIT; declared in `requirements.txt`, not vendored |
 
 If a future change copies or vendors upstream code, examples, benchmark
 profiles, or assets, that pull request must identify the exact source revision,
