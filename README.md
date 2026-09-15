@@ -125,6 +125,13 @@ The canonical sanitized execution-environment artifact is documented in [`docs/s
 
 The repository should stay narrow: application-specific code belongs in its own project. Ship-of-Theseus-Workstation documents the **platform those projects run on**.
 
+## ✅ Continuous integration
+
+Validation is split into two tiers so infrastructure PRs get deterministic checks without requiring this workstation's hardware:
+
+- **Portable CI** ([`.github/workflows/portable-ci.yml`](.github/workflows/portable-ci.yml)) runs on ordinary GitHub-hosted runners for pull requests targeting `main` and `main` pushes. It runs ShellCheck plus the existing `system-report` schema/fixture/unit-test checks that are already defined in `.github/workflows/system-report.yml`.
+- **Hardware gates** — GPU/CUDA/runner-specific validation that only makes sense on the self-hosted node. These land alongside the tools they validate rather than in the portable workflow; see [`docs/self-hosted-runner.md`](docs/self-hosted-runner.md) for runner operations and recovery documentation.
+
 ## 📐 Engineering principles
 
 1. **Reproducibility over screenshots.** Record enough configuration to explain and recreate an environment.
@@ -153,6 +160,9 @@ These directories represent the intended infrastructure layout and will be added
 The August 2026 repositioning of this repository—from a general workstation/portfolio page into a focused AI/HPC infrastructure record—was developed collaboratively with **GPT-5.6 Sol, GPT-5.6 Luna, and GPT-5.6 Terra by OpenAI**. GPT-5.6 Sol, GPT-5.6 Luna, and GPT-5.6 Terra contributed repository-scope analysis, information architecture, README drafting/refinement, and integration of the project's origin story into the current infrastructure narrative; final project direction and repository ownership remain with **rmems**.
 
 The sanitized system-report tool (`scripts/theseus-report`, #13) was architected and implemented by **GPT-5.6 Terra by OpenAI**; its post-review security and correctness hardening—command timeouts and locale-stable parsing, per-collector schema completeness, CI credential/action pinning, and NaN-safe JSON handling—was implemented by **Claude Sonnet 5 by Anthropic**.
+
+The portable-CI tier (`.github/workflows/portable-ci.yml`, #12) was added by **Claude Sonnet 5 by Anthropic**; the hardware-gate tier remains deferred until #3/#7 merge, since there's nothing hardware-specific to gate yet.
+
 
 AI-assisted contributions are attributed explicitly when they materially shape repository documentation or engineering decisions.
 
