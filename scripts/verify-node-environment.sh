@@ -3,10 +3,13 @@ set -uo pipefail
 
 out=${1:-benchmarks/verification-$(date -u +%Y%m%dT%H%M%SZ)-$$.txt}
 mkdir -p "$(dirname "$out")"
-if ! (set -o noclobber; : > "$out") 2>/dev/null; then
+set -o noclobber
+if ! { exec 3> "$out"; } 2>/dev/null; then
+  set +o noclobber
   printf 'Refusing to reuse verification output path: %s\n' "$out" >&2
   exit 2
 fi
+set +o noclobber
 
 failures=0
 check() {
@@ -31,6 +34,6 @@ run_verification() {
   printf 'All node environment checks passed.\n'
 }
 
-run_verification 2>&1 | tee "$out"
+run_verification 2>&1 | tee /dev/fd/3
 statuses=("${PIPESTATUS[@]}")
 (( statuses[0] == 0 && statuses[1] == 0 ))

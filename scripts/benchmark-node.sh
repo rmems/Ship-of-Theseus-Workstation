@@ -2,10 +2,13 @@
 set -uo pipefail
 out=${1:-benchmarks/benchmark-$(date -u +%Y%m%dT%H%M%SZ)-$$.txt}
 mkdir -p "$(dirname "$out")" || exit 1
-if ! (set -o noclobber; : > "$out") 2>/dev/null; then
+set -o noclobber
+if ! { exec 3> "$out"; } 2>/dev/null; then
+  set +o noclobber
   printf 'Refusing to reuse benchmark output path: %s\n' "$out" >&2
   exit 2
 fi
+set +o noclobber
 
 failures=0
 run_and_record() {
@@ -37,6 +40,6 @@ run_and_record() {
     failures=$((failures + 1))
   fi
   (( failures == 0 ))
-} | tee "$out"
+} | tee /dev/fd/3
 statuses=("${PIPESTATUS[@]}")
 (( statuses[0] == 0 && statuses[1] == 0 ))
