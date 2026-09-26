@@ -161,6 +161,8 @@ The August 2026 repositioning of this repository—from a general workstation/po
 
 The sanitized system-report tool (`scripts/theseus-report`, #13) was architected and implemented by **GPT-5.6 Terra by OpenAI**; its post-review security and correctness hardening—command timeouts and locale-stable parsing, per-collector schema completeness, CI credential/action pinning, and NaN-safe JSON handling—was implemented by **Claude Sonnet 5 by Anthropic**.
 
+The self-hosted runner health check (`scripts/runner-health.sh`, #7) and its runbook updates were implemented by **Claude Sonnet 5 by Anthropic**.
+
 The infrastructure change-log convention (`docs/change-log.md`, #9) was initialized by **Claude Sonnet 5 by Anthropic**, left empty of entries since no verified historical hardware/environment changes were available to record accurately.
 
 The portable-CI tier (`.github/workflows/portable-ci.yml`, #12) was added by **Claude Sonnet 5 by Anthropic**; the hardware-gate tier remains deferred until #3/#7 merge, since there's nothing hardware-specific to gate yet.
