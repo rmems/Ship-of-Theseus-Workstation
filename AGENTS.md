@@ -44,7 +44,9 @@ scripts/theseus-report --help
   mountpoints, private paths, environment variables, package lists, process command lines, tokens
   and credentials. Other collectors (for example the node inventory) record more by design, so check
   each script's own docs before changing what it writes.
-- Collectors refuse to reuse an existing output path and clean up on failure. Keep that behaviour.
+- Don't widen what the system report writes without updating `docs/system-report.md` and its
+  allowlist. Failure handling differs per collector (`collect-node-inventory.sh` removes partial
+  output, while `runner-health.sh` keeps a report on failure), so read the script before changing it.
 - `docs/change-log.md` is a curated, dated record of meaningful infrastructure changes, not a
   mirror of `git log`.
 - Commit subjects follow Conventional Commits (`feat:`, `fix:`, `docs:`) with the PR number.
