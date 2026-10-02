@@ -39,9 +39,11 @@ scripts/theseus-report --help
 
 ## Conventions visible in the repo
 
-- Reports must stay sanitized. Per `docs/system-report.md`, the collector persists only allowlisted
-  parsed data and never writes hostname, username, IP/MAC, serials, UUIDs, disk names, mountpoints,
-  private paths, environment variables, package lists, process command lines, tokens or credentials.
+- Keep the system report sanitized. Per `docs/system-report.md`, that collector persists only
+  allowlisted parsed data and omits hostname, username, IP/MAC, serials, UUIDs, disk names,
+  mountpoints, private paths, environment variables, package lists, process command lines, tokens
+  and credentials. Other collectors (for example the node inventory) record more by design, so check
+  each script's own docs before changing what it writes.
 - Collectors refuse to reuse an existing output path and clean up on failure. Keep that behaviour.
 - `docs/change-log.md` is a curated, dated record of meaningful infrastructure changes, not a
   mirror of `git log`.
