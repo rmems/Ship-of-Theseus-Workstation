@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Amp orb setup for Ship-of-Theseus-Workstation.
+#
+# Amp runs this from the repository root when it builds a project orb snapshot
+# (Debian 12, CPU only: orbs have no GPU). It must finish within 20 minutes and
+# be safe to run more than once. See https://ampcode.com/docs/orbs/customizing
+#
+# Installs only what this repo's CI and manifests need:
+#   - uv + Python 3.13 venv with requirements.txt
+#   - ShellCheck 0.11.0 (pinned tarball + sha256, as in portable-ci.yml)
+#
+# It ends with a dependency fetch/prebuild, not a test run.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then
+  SUDO="sudo"
+fi
+
+# --- Python (uv) ---
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v uv >/dev/null 2>&1; then
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+fi
+# system-report.yml uses Python 3.13.
+uv python install 3.13
+if [ ! -x .venv/bin/python ]; then
+  uv venv --python 3.13 .venv
+fi
+uv pip install --python .venv/bin/python -r requirements.txt
+
+# --- ShellCheck 0.11.0 (portable-ci.yml checks the exact version) ---
+if ! shellcheck --version 2>/dev/null | grep -qx 'version: 0.11.0'; then
+  if [ "$(uname -m)" = "x86_64" ]; then
+    tmp="$(mktemp -d)"
+    curl -fsSL --retry 3 -o "$tmp/shellcheck.tar.xz" \
+      https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+    echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  $tmp/shellcheck.tar.xz" | sha256sum -c -
+    tar -xf "$tmp/shellcheck.tar.xz" -C "$tmp"
+    $SUDO install -m 0755 "$tmp/shellcheck-v0.11.0/shellcheck" /usr/local/bin/shellcheck
+    rm -rf "$tmp"
+  else
+    echo "warning: pinned ShellCheck 0.11.0 checksum is for x86_64 only; skipping on $(uname -m)" >&2
+  fi
+fi
+
+echo "Amp orb setup for Ship-of-Theseus-Workstation finished."
