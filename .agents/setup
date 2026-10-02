@@ -70,7 +70,7 @@ fi
 # separately. Login shells get these directories from /etc/profile.d, and every other
 # shell finds the entry points through symlinks in /usr/local/bin (on the default PATH).
 # In login shells the venv's bin comes first, so python3 is the venv's Python.
-# The links skip python and pip so the system python3 stays the default elsewhere.
+# The links skip python and pip; other shells get the python3 wrapper below instead.
 repo_root="$(pwd)"
 tool_dirs=("$repo_root/.venv/bin" "$HOME/.local/bin")
 # shellcheck disable=SC2016 # $PATH must expand when the profile is sourced, not now.
@@ -89,6 +89,14 @@ for dir in "${tool_dirs[@]}"; do
     fi
   done
 done
+
+# scripts/theseus-report runs `#!/usr/bin/env python3` and needs the venv's jsonschema,
+# so point python3 in every shell at the venv, falling back to the system Python.
+venv_python="$repo_root/.venv/bin/python3"
+printf '#!/bin/sh\nif [ -x %q ]; then exec %q "$@"; fi\nexec /usr/bin/python3 "$@"\n' \
+  "$venv_python" "$venv_python" |
+  $SUDO tee /usr/local/bin/python3 >/dev/null
+$SUDO chmod 0755 /usr/local/bin/python3
 
 # .venv/ is not in .gitignore here, so keep it out of `git status` in the orb.
 exclude_file="$(git rev-parse --git-path info/exclude)"
