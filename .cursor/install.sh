@@ -41,30 +41,56 @@ apt_install() {
 apt_install curl ca-certificates
 
 # --- Python (uv) ---
+UV_VERSION=0.6.14
 export PATH="$HOME/.local/bin:$PATH"
-if ! command -v uv >/dev/null 2>&1; then
-  curl -LsSf https://astral.sh/uv/install.sh | sh
+if ! command -v uv >/dev/null 2>&1 || ! uv --version 2>/dev/null | grep -qx "uv $UV_VERSION"; then
+  uv_tmp="$(mktemp)"
+  trap 'rm -f "$uv_tmp"' EXIT
+  curl -fsSL --retry 3 -o "$uv_tmp" "https://astral.sh/uv/${UV_VERSION}/install.sh"
+  sh "$uv_tmp"
+  rm -f "$uv_tmp"
+  trap - EXIT
 fi
 # system-report.yml uses Python 3.13.
-uv python install 3.13
-if [ ! -x .venv/bin/python ]; then
-  uv venv --python 3.13 .venv
+if ! uv python install 3.13; then
+  echo "error: failed to install Python 3.13" >&2
+  exit 1
 fi
-uv pip install --python .venv/bin/python -r requirements.txt
+if [ -x .venv/bin/python ] && ! .venv/bin/python -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 13) else 1)'; then
+  rm -rf .venv
+fi
+if [ ! -x .venv/bin/python ]; then
+  uv venv --seed --python 3.13 .venv
+fi
+if [ -f requirements.txt ]; then
+  uv pip install --python .venv/bin/python -r requirements.txt
+fi
 
 # --- ShellCheck 0.11.0 (portable-ci.yml checks the exact version) ---
 if ! shellcheck --version 2>/dev/null | grep -qx 'version: 0.11.0'; then
-  if [ "$(uname -m)" = "x86_64" ]; then
-    tmp="$(mktemp -d)"
-    curl -fsSL --retry 3 -o "$tmp/shellcheck.tar.xz" \
-      https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
-    echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  $tmp/shellcheck.tar.xz" | sha256sum -c -
-    tar -xf "$tmp/shellcheck.tar.xz" -C "$tmp"
-    $SUDO install -m 0755 "$tmp/shellcheck-v0.11.0/shellcheck" /usr/local/bin/shellcheck
-    rm -rf "$tmp"
-  else
-    echo "warning: pinned ShellCheck 0.11.0 checksum is for x86_64 only; skipping on $(uname -m)" >&2
-  fi
+  case "$(uname -m)" in
+    x86_64)
+      sc_arch=x86_64
+      sc_sha256=8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+      ;;
+    aarch64 | arm64)
+      sc_arch=aarch64
+      sc_sha256=12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588
+      ;;
+    *)
+      echo "error: pinned ShellCheck 0.11.0 has no checksum for $(uname -m)" >&2
+      exit 1
+      ;;
+  esac
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+  curl -fsSL --retry 3 -o "$tmp/shellcheck.tar.xz" \
+    "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.${sc_arch}.tar.xz"
+  echo "${sc_sha256}  $tmp/shellcheck.tar.xz" | sha256sum -c -
+  tar -xf "$tmp/shellcheck.tar.xz" -C "$tmp"
+  $SUDO install -m 0755 "$tmp/shellcheck-v0.11.0/shellcheck" /usr/local/bin/shellcheck
+  rm -rf "$tmp"
+  trap - EXIT
 fi
 
 # --- Expose the tools to later shells ---
@@ -75,8 +101,8 @@ fi
 # The links skip python and pip; other shells get the python3 wrapper below instead.
 repo_root="$(pwd)"
 tool_dirs=("$repo_root/.venv/bin" "$HOME/.local/bin")
-# shellcheck disable=SC2016 # $PATH must expand when the profile is sourced, not now.
-printf 'export PATH=%q:$PATH\n' "$(IFS=:; echo "${tool_dirs[*]}")" |
+# shellcheck disable=SC2016 # $HOME and $PATH must expand when the profile is sourced, not now.
+printf 'export PATH=%q:${HOME}/.local/bin:$PATH\n' "$repo_root/.venv/bin" |
   $SUDO tee /etc/profile.d/cursor-env-Ship-of-Theseus-Workstation.sh >/dev/null
 for dir in "${tool_dirs[@]}"; do
   [ -d "$dir" ] || continue
@@ -92,17 +118,18 @@ for dir in "${tool_dirs[@]}"; do
   done
 done
 
-# scripts/theseus-report runs `#!/usr/bin/env python3` and needs the venv's jsonschema,
-# so point python3 in every shell at the venv, falling back to the system Python.
+# scripts/theseus-report runs `#!/usr/bin/env python3` and needs the venv's jsonschema.
 venv_python="$repo_root/.venv/bin/python3"
-printf '#!/bin/sh\nif [ -x %q ]; then exec %q "$@"; fi\nexec /usr/bin/python3 "$@"\n' \
-  "$venv_python" "$venv_python" |
+printf '#!/bin/sh\nif [ ! -x %q ]; then\n  echo "error: venv python missing at %q (re-run the Cursor Build)" >&2\n  exit 1\nfi\nexec %q "$@"\n' \
+  "$venv_python" "$venv_python" "$venv_python" |
   $SUDO tee /usr/local/bin/python3 >/dev/null
 $SUDO chmod 0755 /usr/local/bin/python3
 
 # .venv/ is not in .gitignore here, so keep it out of `git status`.
-exclude_file="$(git rev-parse --git-path info/exclude)"
-mkdir -p "$(dirname "$exclude_file")"
-grep -qxF '/.venv/' "$exclude_file" 2>/dev/null || echo '/.venv/' >>"$exclude_file"
+exclude_file="$(git rev-parse --git-path info/exclude 2>/dev/null || echo "")"
+if [ -n "$exclude_file" ]; then
+  mkdir -p "$(dirname "$exclude_file")"
+  grep -qxF '/.venv/' "$exclude_file" 2>/dev/null || echo '/.venv/' >>"$exclude_file"
+fi
 
 echo "Cursor install for Ship-of-Theseus-Workstation finished."
