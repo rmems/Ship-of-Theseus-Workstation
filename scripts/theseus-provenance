@@ -84,7 +84,8 @@ FORBIDDEN_KEY = re.compile(
 # Value shapes that indicate leaked host identifiers or local paths.
 FORBIDDEN_VALUE_PATTERNS = (
     ("home_or_root_path", re.compile(r"(^|[\s=:'\"(])(~/|/home/|/root(/|$)|/Users/|/var/home/|[A-Za-z]:\\\\Users\\\\)")),
-    ("absolute_path", re.compile(r"(^|[\s=:'\"(])/(etc|usr|opt|mnt|media|run|srv|tmp|var|proc|sys|dev)/")),
+    # Any absolute POSIX path with at least one directory, or a drive-letter path.
+    ("absolute_path", re.compile(r"(^|[\s=:'\"(])(/[A-Za-z0-9._~-]+/|[A-Za-z]:[\\/])")),
     ("ipv4_address", re.compile(r"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?![\d.])")),
     ("ipv6_address", re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{1,4}:){4,7}[0-9A-Fa-f]{1,4}(?![0-9A-Fa-f:])")),
     ("mac_address", re.compile(r"(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f])")),

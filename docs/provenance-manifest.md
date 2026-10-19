@@ -101,7 +101,8 @@ and **fail** (they do not strip the data and continue) if:
 - any key contains `hostname`, `username`, `serial`, `uuid`, `mac_address`,
   `ip_address`, `path`, `home`, `email`, `token`, `secret`, `password`,
   `credential`, `remote_url`, or `bus_id`;
-- any string value looks like a home, absolute or `./`/`../` relative path,
+- any string value looks like a home path, any absolute path (POSIX or a
+  drive letter such as `D:\`), or a `./`/`../` relative path,
   IPv4, IPv6 (including compressed forms such as `2001:db8::1`), MAC, UUID,
   email, any URL (so `https://` git remotes too), or `git@host:` remote;
 - any operator-supplied or free-form string contains the running host's

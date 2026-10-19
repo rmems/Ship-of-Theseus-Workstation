@@ -500,13 +500,18 @@ class RedactionTests(ProvenanceTestCase):
             "../private/train.csv": "relative_path",
             "./data/train.csv": "relative_path",
             "https://github.com/someone/private-repo.git": "url",
+            "/data/someone/private/train.csv": "absolute_path",
+            "/scratch/exp/run1": "absolute_path",
+            "/workspace/proj/ckpt.pt": "absolute_path",
+            "dataset=D:\\datasets\\private\\x": "absolute_path",
+            "C:/datasets/x": "absolute_path",
         }
         for value, label in leaks.items():
             data = copy.deepcopy(base)
             data["workload_metadata"]["note"] = value
             with self.assertRaisesRegex(prov.ProvenanceError, label, msg=value):
                 prov.validate_manifest(data)
-        for harmless in ("data/train.csv", "std::fmt::Display", "12:30:45", "v1.2.3"):
+        for harmless in ("data/train.csv", "std::fmt::Display", "12:30:45", "v1.2.3", "08/15/2026", "2.9.0+cu130", "a/b"):
             data = copy.deepcopy(base)
             data["workload_metadata"]["note"] = harmless
             prov.validate_manifest(data)
