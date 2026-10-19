@@ -20,8 +20,9 @@ Run from the repo root. "Verified" means it ran successfully in a fresh checkout
 | `scripts/runner-health.sh` | not run (checks the self-hosted runner and service on the host) |
 | `bash .cursor/install.sh` | not run (changes the host: apt, `/usr/local/bin`, `/etc/profile.d`) |
 
-CI: `portable-ci.yml` runs pinned ShellCheck 0.11.0 on `scripts/*.sh`; `system-report.yml` runs the unittest and `--help` rows
-above on Python 3.13. Both run on hosted runners for PRs and pushes to `main`. No hardware-gate workflow exists yet.
+CI: `system-report.yml` runs the unittest and `--help` rows above on Python 3.13 on hosted runners. `portable-ci.yml` is meant to
+run pinned ShellCheck 0.11.0 on `scripts/*.sh`, but its recent runs all end in `failure` with 0 jobs (GitHub reports a possible
+workflow-file issue), so ShellCheck is not enforced in CI today. No hardware-gate workflow exists yet.
 
 ## Architecture map
 
@@ -47,6 +48,6 @@ above on Python 3.13. Both run on hosted runners for PRs and pushes to `main`. N
 - `benchmarks/` is referenced as the output directory but does not exist and is not gitignored; never commit generated output.
 - `.claude/` and `.venv/` are not gitignored (`.cursor/install.sh` only adds `.venv` to `.git/info/exclude`); do not commit local agent state.
 - `scripts/theseus-report` has a `#!/usr/bin/env python3` shebang and needs `jsonschema` importable there.
-- `shellcheck scripts/*.sh` returns non-zero on the info-level SC2329 notices, so the `portable-ci.yml` ShellCheck step can fail even though nothing is broken.
+- A local `shellcheck scripts/*.sh` exits 1 on the info-level SC2329 notices, so it would fail `portable-ci.yml` once that workflow actually runs, even though nothing is broken.
 - Never run `cargo`/registry/publish-style commands; nothing here is published.
 - Edit only what the task needs.
