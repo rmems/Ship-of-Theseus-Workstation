@@ -1,0 +1,2 @@
+NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  580.95.05  Release Build  (builder@secret-build-host)  Tue Sep 30 00:00:00 UTC 2026
+GCC version:  gcc version 15.2.1 20250808 (Red Hat 15.2.1-1) (GCC)

@@ -1,0 +1,341 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rmems/Ship-of-Theseus-Workstation/blob/main/schemas/provenance-manifest.schema.json",
+  "title": "Ship of Theseus experiment environment provenance manifest",
+  "description": "Compact, privacy-minimal environment record attached to a telemetry capture, benchmark, or experiment run. Every probed value is a field object carrying its probe source and an explicit status; a value that could not be read is recorded as unavailable with a reason, never omitted or guessed. Field-by-field redaction decisions are documented in docs/provenance-manifest.md.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "created_at_utc",
+    "collector",
+    "node",
+    "environment",
+    "repositories",
+    "telemetry",
+    "links",
+    "workload_metadata",
+    "redaction"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "manifest_id": {"type": "string", "pattern": "^prov-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"},
+    "created_at_utc": {"type": "string", "format": "date-time", "pattern": "Z$"},
+    "collector": {
+      "type": "object",
+      "required": ["name", "version", "source_commit"],
+      "properties": {
+        "name": {"const": "theseus-provenance"},
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "source_commit": {"$ref": "#/$defs/commitField"}
+      },
+      "additionalProperties": false
+    },
+    "node": {
+      "type": "object",
+      "required": ["label", "host_role", "host_fingerprint"],
+      "properties": {
+        "label": {"const": "ship-of-theseus"},
+        "host_role": {"enum": ["interactive", "telemetry-capture", "benchmark", "training", "ci-runner", "other"]},
+        "host_fingerprint": {
+          "$ref": "#/$defs/stringField",
+          "properties": {"value": {"type": "string", "pattern": "^hmac-sha256:[0-9a-f]{64}$"}}
+        }
+      },
+      "additionalProperties": false
+    },
+    "environment": {
+      "type": "object",
+      "required": ["os", "kernel_release", "architecture", "firmware", "cpu", "gpu", "cuda", "toolchains", "frameworks"],
+      "properties": {
+        "os": {
+          "type": "object",
+          "required": ["id", "version_id"],
+          "properties": {"id": {"$ref": "#/$defs/stringField"}, "version_id": {"$ref": "#/$defs/stringField"}},
+          "additionalProperties": false
+        },
+        "kernel_release": {"$ref": "#/$defs/stringField"},
+        "architecture": {"$ref": "#/$defs/stringField"},
+        "firmware": {
+          "type": "object",
+          "required": ["bios_vendor", "bios_version", "bios_date", "board_vendor", "board_name"],
+          "properties": {
+            "bios_vendor": {"$ref": "#/$defs/stringField"},
+            "bios_version": {"$ref": "#/$defs/stringField"},
+            "bios_date": {"$ref": "#/$defs/stringField"},
+            "board_vendor": {"$ref": "#/$defs/stringField"},
+            "board_name": {"$ref": "#/$defs/stringField"}
+          },
+          "additionalProperties": false
+        },
+        "cpu": {
+          "type": "object",
+          "required": ["model", "scaling_governors", "energy_performance_preferences", "amd_pstate_mode", "boost_enabled"],
+          "properties": {
+            "model": {"$ref": "#/$defs/stringField"},
+            "scaling_governors": {"$ref": "#/$defs/stringListField"},
+            "energy_performance_preferences": {"$ref": "#/$defs/stringListField"},
+            "amd_pstate_mode": {"$ref": "#/$defs/stringField"},
+            "boost_enabled": {"$ref": "#/$defs/booleanField"}
+          },
+          "additionalProperties": false
+        },
+        "gpu": {
+          "type": "object",
+          "required": ["kernel_module_version", "devices"],
+          "properties": {
+            "kernel_module_version": {"$ref": "#/$defs/stringField"},
+            "devices": {"$ref": "#/$defs/gpuDevicesField"}
+          },
+          "additionalProperties": false
+        },
+        "cuda": {
+          "type": "object",
+          "required": ["driver_cuda_version", "toolkit_version"],
+          "properties": {
+            "driver_cuda_version": {"$ref": "#/$defs/stringField"},
+            "toolkit_version": {"$ref": "#/$defs/stringField"}
+          },
+          "additionalProperties": false
+        },
+        "toolchains": {
+          "type": "object",
+          "required": ["python", "rustc", "cargo", "gcc", "julia"],
+          "properties": {
+            "python": {"$ref": "#/$defs/stringField"},
+            "rustc": {"$ref": "#/$defs/stringField"},
+            "cargo": {"$ref": "#/$defs/stringField"},
+            "gcc": {"$ref": "#/$defs/stringField"},
+            "julia": {"$ref": "#/$defs/stringField"}
+          },
+          "additionalProperties": false
+        },
+        "frameworks": {
+          "type": "object",
+          "required": ["pytorch", "pytorch_cuda_build", "pytorch_cudnn"],
+          "properties": {
+            "pytorch": {"$ref": "#/$defs/stringField"},
+            "pytorch_cuda_build": {"$ref": "#/$defs/stringField"},
+            "pytorch_cudnn": {"$ref": "#/$defs/stringField"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "repositories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "commit", "dirty"],
+        "properties": {
+          "name": {"$ref": "#/$defs/repoName"},
+          "commit": {"$ref": "#/$defs/commitField"},
+          "dirty": {"$ref": "#/$defs/booleanField"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "required": ["contract_version", "collector_name", "collector_version"],
+      "properties": {
+        "contract_version": {"$ref": "#/$defs/stringField"},
+        "collector_name": {"$ref": "#/$defs/stringField"},
+        "collector_version": {"$ref": "#/$defs/stringField"}
+      },
+      "additionalProperties": false
+    },
+    "links": {
+      "type": "object",
+      "required": ["run_id", "run_kind", "system_report", "artifacts"],
+      "properties": {
+        "run_id": {
+          "$ref": "#/$defs/stringField",
+          "properties": {"value": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}}
+        },
+        "run_kind": {
+          "$ref": "#/$defs/stringField",
+          "properties": {"value": {"enum": ["telemetry", "benchmark", "verification", "experiment", "training", "other"]}}
+        },
+        "system_report": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["source", "status", "report_id", "sha256"],
+              "properties": {
+                "source": {"const": "operator"},
+                "status": {"const": "available"},
+                "report_id": {"type": "string", "pattern": "^ship-of-theseus-[0-9TZ]+$"},
+                "sha256": {"$ref": "#/$defs/sha256"}
+              },
+              "additionalProperties": false
+            },
+            {"$ref": "#/$defs/notAvailable"}
+          ]
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "sha256", "size_bytes"],
+            "properties": {
+              "kind": {"enum": ["telemetry", "benchmark", "verification", "dataset", "model", "other"]},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "size_bytes": {"type": "integer", "minimum": 0}
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "workload_metadata": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9_]{0,63}$"},
+      "additionalProperties": {"type": "string", "maxLength": 256}
+    },
+    "redaction": {
+      "type": "object",
+      "required": ["policy_version", "host_fingerprint_method"],
+      "properties": {
+        "policy_version": {"const": "1.0.0"},
+        "host_fingerprint_method": {"const": "hmac-sha256(/etc/machine-id, key=ship-of-theseus-provenance/v1)"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "source": {
+      "enum": [
+        "os_release", "platform", "dmi", "cpuinfo", "cpufreq", "amd_pstate", "machine_id",
+        "proc_driver_nvidia", "nvidia_smi", "nvcc", "python", "rustc", "cargo", "gcc", "julia",
+        "pytorch", "git", "operator"
+      ]
+    },
+    "reason": {
+      "enum": [
+        "command_not_found", "command_failed", "command_timeout", "permission_denied",
+        "source_unavailable", "unparseable_output", "not_supported_by_device",
+        "module_not_installed", "cpu_only_build", "not_a_git_repository", "not_provided", "operator_opt_out"
+      ]
+    },
+    "notAvailable": {
+      "type": "object",
+      "required": ["source", "status", "reason"],
+      "properties": {
+        "source": {"$ref": "#/$defs/source"},
+        "status": {"enum": ["unavailable", "omitted"]},
+        "reason": {"$ref": "#/$defs/reason"}
+      },
+      "additionalProperties": false
+    },
+    "availableBase": {
+      "type": "object",
+      "required": ["source", "status", "value"],
+      "properties": {
+        "source": {"$ref": "#/$defs/source"},
+        "status": {"const": "available"}
+      }
+    },
+    "stringField": {
+      "oneOf": [
+        {
+          "allOf": [{"$ref": "#/$defs/availableBase"}],
+          "properties": {"source": true, "status": true, "value": {"type": "string", "minLength": 1, "maxLength": 256}},
+          "additionalProperties": false
+        },
+        {"$ref": "#/$defs/notAvailable"}
+      ]
+    },
+    "stringListField": {
+      "oneOf": [
+        {
+          "allOf": [{"$ref": "#/$defs/availableBase"}],
+          "properties": {
+            "source": true,
+            "status": true,
+            "value": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 64}}
+          },
+          "additionalProperties": false
+        },
+        {"$ref": "#/$defs/notAvailable"}
+      ]
+    },
+    "booleanField": {
+      "oneOf": [
+        {
+          "allOf": [{"$ref": "#/$defs/availableBase"}],
+          "properties": {"source": true, "status": true, "value": {"type": "boolean"}},
+          "additionalProperties": false
+        },
+        {"$ref": "#/$defs/notAvailable"}
+      ]
+    },
+    "numberField": {
+      "oneOf": [
+        {
+          "allOf": [{"$ref": "#/$defs/availableBase"}],
+          "properties": {"source": true, "status": true, "value": {"type": "number", "minimum": 0}},
+          "additionalProperties": false
+        },
+        {"$ref": "#/$defs/notAvailable"}
+      ]
+    },
+    "commitField": {
+      "oneOf": [
+        {
+          "allOf": [{"$ref": "#/$defs/availableBase"}],
+          "properties": {"source": {"const": "git"}, "status": true, "value": {"type": "string", "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"}},
+          "additionalProperties": false
+        },
+        {"$ref": "#/$defs/notAvailable"}
+      ]
+    },
+    "gpuDevice": {
+      "type": "object",
+      "required": [
+        "index", "name", "driver_version", "vbios_version", "compute_capability", "memory_total_mib",
+        "power_limit_w", "power_default_limit_w", "power_enforced_limit_w", "power_max_limit_w",
+        "clocks_max_graphics_mhz", "clocks_max_memory_mhz",
+        "persistence_mode", "pcie_link_gen_max", "pcie_link_width_max"
+      ],
+      "properties": {
+        "index": {"type": "integer", "minimum": 0},
+        "name": {"$ref": "#/$defs/stringField"},
+        "driver_version": {"$ref": "#/$defs/stringField"},
+        "vbios_version": {"$ref": "#/$defs/stringField"},
+        "compute_capability": {"$ref": "#/$defs/stringField"},
+        "memory_total_mib": {"$ref": "#/$defs/numberField"},
+        "power_limit_w": {"$ref": "#/$defs/numberField"},
+        "power_default_limit_w": {"$ref": "#/$defs/numberField"},
+        "power_enforced_limit_w": {"$ref": "#/$defs/numberField"},
+        "power_max_limit_w": {"$ref": "#/$defs/numberField"},
+        "clocks_max_graphics_mhz": {"$ref": "#/$defs/numberField"},
+        "clocks_max_memory_mhz": {"$ref": "#/$defs/numberField"},
+        "persistence_mode": {"$ref": "#/$defs/stringField"},
+        "pcie_link_gen_max": {"$ref": "#/$defs/numberField"},
+        "pcie_link_width_max": {"$ref": "#/$defs/numberField"}
+      },
+      "additionalProperties": false
+    },
+    "gpuDevicesField": {
+      "oneOf": [
+        {
+          "allOf": [{"$ref": "#/$defs/availableBase"}],
+          "properties": {
+            "source": {"const": "nvidia_smi"},
+            "status": true,
+            "value": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/gpuDevice"}}
+          },
+          "additionalProperties": false
+        },
+        {"$ref": "#/$defs/notAvailable"}
+      ]
+    },
+    "repoName": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,100}(/[A-Za-z0-9._-]{1,100})?$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
