@@ -63,6 +63,40 @@ def build_sysroot(root: Path, *, nvidia: bool = True, governors=("performance", 
     return root
 
 
+def _ok(out: str):
+    return prov.CommandResult(0, out, "")
+
+
+NVIDIA_SMI_FIXTURES = {
+    ("nvidia-smi", f"--query-gpu={NVIDIA_QUERY}", "--format=csv,noheader,nounits"): "nvidia-query.csv",
+    ("nvidia-smi",): "nvidia-smi-banner.txt",
+}
+NVCC_FIXTURES = {("nvcc", "--version"): "nvcc.txt"}
+STATIC_OUTPUTS = {
+    ("python3", "--version"): "Python 3.13.7\n",
+    ("rustc", "--version"): "rustc 1.90.0 (1159e78c4 2026-09-14)\n",
+    ("cargo", "--version"): "cargo 1.90.0 (840b83a10 2026-07-30)\n",
+    ("gcc", "-dumpfullversion"): "15.2.1\n",
+}
+TORCH_PROBES = {
+    None: {"installed": False},
+    "cpu": {"installed": True, "version": "2.9.0+cpu", "cuda": None, "cudnn": None},
+    "cuda": {"installed": True, "version": "2.9.0+cu130", "cuda": "13.0", "cudnn": 91300},
+}
+
+
+def _is_status_entry(node) -> bool:
+    return isinstance(node, dict) and {"source", "status"} <= node.keys()
+
+
+def _children(node, where):
+    if isinstance(node, dict):
+        return [(f"{where}.{key}", value) for key, value in node.items()]
+    if isinstance(node, list):
+        return [(f"{where}[{index}]", value) for index, value in enumerate(node)]
+    return []
+
+
 class FakeRunner:
     """Answers the exact commands the collector issues; anything else is 'not installed'."""
 
@@ -74,46 +108,53 @@ class FakeRunner:
 
     def run(self, *args, timeout=None, cwd=None):
         self.calls.append(args)
-        for prefix, handler in self.overrides.items():
-            if args[: len(prefix)] == prefix:
-                return handler(args)
-        ok = lambda out: prov.CommandResult(0, out, "")  # noqa: E731
-        if args[0] == "nvidia-smi":
-            if not self.nvidia:
-                raise FileNotFoundError("nvidia-smi")
-            if args == ("nvidia-smi", f"--query-gpu={NVIDIA_QUERY}", "--format=csv,noheader,nounits"):
-                return ok((FIXTURES / "nvidia-query.csv").read_text())
-            if args == ("nvidia-smi",):
-                return ok((FIXTURES / "nvidia-smi-banner.txt").read_text())
-        if args == ("nvcc", "--version"):
-            if not self.nvidia:
-                raise FileNotFoundError("nvcc")
-            return ok((FIXTURES / "nvcc.txt").read_text())
-        if args == ("python3", "--version"):
-            return ok("Python 3.13.7\n")
-        if args == ("rustc", "--version"):
-            return ok("rustc 1.90.0 (1159e78c4 2026-09-14)\n")
-        if args == ("cargo", "--version"):
-            return ok("cargo 1.90.0 (840b83a10 2026-07-30)\n")
-        if args == ("gcc", "-dumpfullversion"):
-            return ok("15.2.1\n")
-        if args[0] == "julia":
-            raise FileNotFoundError("julia")
+        override = self._find_override(args)
+        if override is not None:
+            return override(args)
         if args[:3] == ("python3", "-I", "-c"):
-            if self.torch is None:
-                return ok(json.dumps({"installed": False}) + "\n")
-            if self.torch == "cpu":
-                return ok(json.dumps({"installed": True, "version": "2.9.0+cpu", "cuda": None, "cudnn": None}) + "\n")
-            return ok(json.dumps({"installed": True, "version": "2.9.0+cu130", "cuda": "13.0", "cudnn": 91300}) + "\n")
-        if args[0] == "git":
-            repo = args[2]
-            if "not-a-repo" in repo:
-                return prov.CommandResult(128, "", "fatal: not a git repository")
-            if args[3:5] == ("rev-parse", "--verify"):
-                return ok((SHA_B if "workload" in repo else SHA_A) + "\n")
-            if args[3] == "status":
-                return ok(" M src/lib.rs\n" if "dirty" in repo else "")
+            return self._torch_probe()
+        handler = self._HANDLERS.get(args[0], FakeRunner._static)
+        return handler(self, args)
+
+    def _find_override(self, args):
+        return next((handler for prefix, handler in self.overrides.items() if args[: len(prefix)] == prefix), None)
+
+    def _require_nvidia(self, command):
+        if not self.nvidia:
+            raise FileNotFoundError(command)
+
+    def _static(self, args):
+        if args not in STATIC_OUTPUTS:
+            raise FileNotFoundError(args[0])
+        return _ok(STATIC_OUTPUTS[args])
+
+    def _fixture(self, table, args):
+        self._require_nvidia(args[0])
+        if args not in table:
+            raise FileNotFoundError(args[0])
+        return _ok((FIXTURES / table[args]).read_text())
+
+    def _nvidia_smi(self, args):
+        return self._fixture(NVIDIA_SMI_FIXTURES, args)
+
+    def _nvcc(self, args):
+        return self._fixture(NVCC_FIXTURES, args)
+
+    def _torch_probe(self):
+        payload = TORCH_PROBES.get(self.torch, TORCH_PROBES["cuda"])
+        return _ok(json.dumps(payload) + "\n")
+
+    def _git(self, args):
+        repo = args[2]
+        if "not-a-repo" in repo:
+            return prov.CommandResult(128, "", "fatal: not a git repository")
+        if args[3:5] == ("rev-parse", "--verify"):
+            return _ok((SHA_B if "workload" in repo else SHA_A) + "\n")
+        if args[3] == "status":
+            return _ok(" M src/lib.rs\n" if "dirty" in repo else "")
         raise FileNotFoundError(args[0])
+
+    _HANDLERS = {"nvidia-smi": _nvidia_smi, "nvcc": _nvcc, "git": _git}
 
 
 class ProvenanceTestCase(unittest.TestCase):
@@ -196,6 +237,21 @@ class CollectionTests(ProvenanceTestCase):
 class DegradationTests(ProvenanceTestCase):
     """Missing sources are recorded as unavailable with a reason, never omitted or guessed."""
 
+    def assert_status_entry(self, node, where):
+        if node["status"] == "available":
+            self.assertIn("value", node, where)
+            self.assertIsNotNone(node["value"], where)
+            return
+        self.assertIn("reason", node, where)
+        self.assertNotIn("value", node, where)
+
+    def assert_all_leaves_explicit(self, node, where):
+        if _is_status_entry(node):
+            self.assert_status_entry(node, where)
+            return
+        for child_where, child in _children(node, where):
+            self.assert_all_leaves_explicit(child, child_where)
+
     def test_no_nvidia_stack_degrades_explicitly(self):
         sysroot = build_sysroot(self.tmp / "no-gpu", nvidia=False)
         probe = prov.Probe(runner=FakeRunner(nvidia=False, torch=None), sysroot=sysroot, machine=lambda: "x86_64")
@@ -213,25 +269,8 @@ class DegradationTests(ProvenanceTestCase):
         sysroot = build_sysroot(self.tmp / "bare", nvidia=False)
         probe = prov.Probe(runner=FakeRunner(nvidia=False, torch=None), sysroot=sysroot, machine=lambda: "x86_64")
         data = prov.build_manifest(prov.Options(), probe, created_at=FIXED_TIME)
-
-        def check(node, where):
-            if isinstance(node, dict) and "source" in node and "status" in node:
-                if node["status"] == "available":
-                    self.assertIn("value", node, where)
-                    self.assertIsNotNone(node["value"], where)
-                else:
-                    self.assertIn("reason", node, where)
-                    self.assertNotIn("value", node, where)
-                return
-            if isinstance(node, dict):
-                for key, value in node.items():
-                    check(value, f"{where}.{key}")
-            elif isinstance(node, list):
-                for index, value in enumerate(node):
-                    check(value, f"{where}[{index}]")
-
-        check(data["environment"], "environment")
-        check(data["telemetry"], "telemetry")
+        self.assert_all_leaves_explicit(data["environment"], "environment")
+        self.assert_all_leaves_explicit(data["telemetry"], "telemetry")
         self.assertEqual(data["links"]["run_id"]["reason"], "not_provided")
         self.assertEqual(data["links"]["system_report"]["reason"], "not_provided")
 
