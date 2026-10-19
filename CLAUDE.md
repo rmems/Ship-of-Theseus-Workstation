@@ -36,7 +36,7 @@ workflow-file issue), so ShellCheck is not enforced in CI today. No hardware-gat
 ## Invariants and non-goals
 
 - Do not run provisioning, node-cleanup, or runner scripts from an agent session; read them. Mark them "not run (changes the host)".
-- The system report is an allowlist: no hostname, username, IP/MAC, serial, UUID, mountpoint, env var, package list, or raw command output (`docs/system-report.md`). Do not widen it without bumping the schema.
+- The system report is an allowlist: no hostname, username, IP/MAC, serial, UUID, disk name, mountpoint, private path, env var, package list, process command line, token, credential, or raw command output (`docs/system-report.md`). Do not widen it without bumping the schema.
 - Fail honestly: unavailable collectors record `unavailable` or `failed`; never fabricate versions or results (`configs/node-provenance.toml` says "do not guess versions").
 - Keep the repo narrow: node-level infrastructure only. Application code belongs in its own repository.
 - Collectors invoke external tools but do not vendor them; keep `THIRD_PARTY_NOTICES.md` current.
