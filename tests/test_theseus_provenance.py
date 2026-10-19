@@ -4,6 +4,7 @@ import importlib.machinery
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -366,11 +367,15 @@ class DegradationTests(ProvenanceTestCase):
     def test_real_git_subdirectory_is_rejected_but_root_is_recorded(self):
         root = self.tmp / "real-repo"
         (root / "docs").mkdir(parents=True)
-        git = ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
-        subprocess.run(["git", "init", "-q", str(root)], check=True)
+        # Isolate from the developer's git: no inherited GIT_* (a hook may set GIT_DIR),
+        # no global/system config, no commit signing.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        env["GIT_CONFIG_GLOBAL"] = env["GIT_CONFIG_SYSTEM"] = os.devnull
+        git = ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"]
+        subprocess.run(["git", "init", "-q", str(root)], check=True, env=env)
         (root / "docs" / "a.txt").write_text("a\n")
-        subprocess.run([*git, "add", "."], check=True)
-        subprocess.run([*git, "commit", "-q", "-m", "init"], check=True)
+        subprocess.run([*git, "add", "."], check=True, env=env)
+        subprocess.run([*git, "commit", "-q", "-m", "init"], check=True, env=env)
         probe = prov.Probe(sysroot=self.sysroot, machine=lambda: "x86_64")
         commit, _dirty = prov.git_commit(probe, root)
         self.assertEqual(commit["status"], "available")
@@ -694,6 +699,20 @@ class CliTests(ProvenanceTestCase):
         _, kwargs = run.call_args
         self.assertEqual(kwargs["env"]["LC_ALL"], "C")
         self.assertEqual(kwargs["env"]["GIT_TERMINAL_PROMPT"], "0")
+
+    def test_command_runner_drops_git_location_variables(self):
+        with mock.patch.dict(os.environ, {"GIT_DIR": "/elsewhere/.git", "GIT_WORK_TREE": "/elsewhere"}):
+            with mock.patch("subprocess.run") as run:
+                run.return_value = mock.Mock(returncode=0, stdout="", stderr="")
+                prov.CommandRunner().run("git", "-C", "x", "rev-parse", "HEAD")
+        env = run.call_args.kwargs["env"]
+        self.assertNotIn("GIT_DIR", env)
+        self.assertNotIn("GIT_WORK_TREE", env)
+
+    def test_metadata_keys_are_checked_for_host_identity(self):
+        data = self.manifest(meta=["devbox_run=1"])
+        with self.assertRaisesRegex(prov.ProvenanceError, "key contains a local host identity term"):
+            prov.validate_manifest(data, extra_forbidden=["devbox"])
 
 
 class LiveHostTests(unittest.TestCase):

@@ -135,9 +135,18 @@ class CommandResult:
     stderr: str
 
 
+# Variables that would make git ignore `-C <dir>` and read some other repository.
+GIT_LOCATION_ENV = frozenset({
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_NAMESPACE", "GIT_PREFIX",
+    "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+})
+
+
 class CommandRunner:
     def run(self, *args: str, timeout: int = COMMAND_TIMEOUT_SECONDS, cwd: Path | None = None) -> CommandResult:
-        env = {**os.environ, "LC_ALL": "C", "LANG": "C", "GIT_TERMINAL_PROMPT": "0"}
+        env = {key: value for key, value in os.environ.items() if key not in GIT_LOCATION_ENV}
+        env.update({"LC_ALL": "C", "LANG": "C", "GIT_TERMINAL_PROMPT": "0"})
         completed = subprocess.run(
             args, capture_output=True, text=True, check=False, timeout=timeout, env=env, cwd=cwd
         )
@@ -683,6 +692,9 @@ def redaction_violations(manifest: Any, extra_forbidden: list[str] | None = None
         if key is not None:
             if FORBIDDEN_KEY.search(key) and key != "host_fingerprint_method":
                 violations.append(f"{location}: forbidden key")
+            # Operator-chosen metadata keys are free text too; schema keys are fixed.
+            if location.startswith("$.workload_metadata.") and any(pattern.search(key) for pattern in extra):
+                violations.append(f"{location}: key contains a local host identity term")
             continue
         if value is None:
             continue
