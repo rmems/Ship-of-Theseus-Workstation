@@ -447,6 +447,13 @@ class RedactionTests(ProvenanceTestCase):
         finally:
             self.identity_patch.start()
 
+    def test_repo_owner_matching_local_login_does_not_block_collection(self):
+        data = self.manifest(repos=[f"rmems/gaming-telemetry={self.tmp / 'workload'}"])
+        prov.validate_manifest(data, extra_forbidden=["rmems"])
+        leaky = self.manifest(repos=[f"rmems/rmems-notes={self.tmp / 'workload'}"])
+        with self.assertRaisesRegex(prov.ProvenanceError, "local host identity term"):
+            prov.validate_manifest(leaky, extra_forbidden=["rmems"])
+
     def test_metadata_path_values_are_rejected_at_collection(self):
         with self.assertRaisesRegex(prov.ProvenanceError, "home_or_root_path"):
             self.manifest(meta=["dataset=/home/someone/data.parquet"])
