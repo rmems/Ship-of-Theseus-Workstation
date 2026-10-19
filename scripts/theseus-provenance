@@ -469,6 +469,13 @@ def host_fingerprint(probe: Probe, opt_out: bool) -> dict[str, Any]:
 
 
 def git_commit(probe: Probe, repo: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    # git walks up to any enclosing checkout; a directory that is not the
+    # checkout root would otherwise record the *enclosing* repo's commit.
+    prefix, reason = probe.command("git", "-C", str(repo), "rev-parse", "--show-prefix")
+    if prefix is None or prefix.stdout.strip():
+        probe_reason = "not_a_git_repository" if prefix is not None or reason == "command_failed" else reason
+        failed = unavailable("git", probe_reason or "command_failed")
+        return failed, failed
     head, reason = probe.command("git", "-C", str(repo), "rev-parse", "--verify", "HEAD")
     if head is None:
         probe_reason = "not_a_git_repository" if reason == "command_failed" else (reason or "command_failed")

@@ -149,6 +149,8 @@ class FakeRunner:
         repo = args[2]
         if "not-a-repo" in repo:
             return prov.CommandResult(128, "", "fatal: not a git repository")
+        if args[3:5] == ("rev-parse", "--show-prefix"):
+            return _ok("docs/\n" if "subdir" in repo else "\n")
         if args[3:5] == ("rev-parse", "--verify"):
             return _ok((SHA_B if "workload" in repo else SHA_A) + "\n")
         if args[3] == "status":
@@ -356,6 +358,24 @@ class DegradationTests(ProvenanceTestCase):
         self.assertEqual(data["repositories"][0]["commit"]["reason"], "not_a_git_repository")
         self.assertEqual(data["repositories"][0]["dirty"]["reason"], "not_a_git_repository")
         self.assertIs(data["repositories"][1]["dirty"]["value"], True)
+
+    def test_directory_inside_another_checkout_is_not_given_its_commit(self):
+        data = self.manifest(repos=[f"x/vendored={self.tmp / 'subdir-of-workload'}"])
+        self.assertEqual(data["repositories"][0]["commit"]["reason"], "not_a_git_repository")
+
+    def test_real_git_subdirectory_is_rejected_but_root_is_recorded(self):
+        root = self.tmp / "real-repo"
+        (root / "docs").mkdir(parents=True)
+        git = ["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+        subprocess.run(["git", "init", "-q", str(root)], check=True)
+        (root / "docs" / "a.txt").write_text("a\n")
+        subprocess.run([*git, "add", "."], check=True)
+        subprocess.run([*git, "commit", "-q", "-m", "init"], check=True)
+        probe = prov.Probe(sysroot=self.sysroot, machine=lambda: "x86_64")
+        commit, _dirty = prov.git_commit(probe, root)
+        self.assertEqual(commit["status"], "available")
+        commit, dirty = prov.git_commit(probe, root / "docs")
+        self.assertEqual((commit["reason"], dirty["reason"]), ("not_a_git_repository", "not_a_git_repository"))
 
     def test_require_gate_fails_loud_when_field_unavailable(self):
         probe = prov.Probe(runner=FakeRunner(nvidia=False), sysroot=self.sysroot, machine=lambda: "x86_64")
