@@ -82,6 +82,7 @@ TORCH_PROBES = {
     None: {"installed": False},
     "cpu": {"installed": True, "version": "2.9.0+cpu", "cuda": None, "cudnn": None},
     "cuda": {"installed": True, "version": "2.9.0+cu130", "cuda": "13.0", "cudnn": 91300},
+    "cuda-no-cudnn": {"installed": True, "version": "2.9.0+cu130", "cuda": "13.0", "cudnn": None},
 }
 
 
@@ -111,7 +112,7 @@ class FakeRunner:
         override = self._find_override(args)
         if override is not None:
             return override(args)
-        if args[:3] == ("python3", "-I", "-c"):
+        if args[:2] == ("python3", "-c"):
             return self._torch_probe()
         handler = self._HANDLERS.get(args[0], FakeRunner._static)
         return handler(self, args)
@@ -320,6 +321,29 @@ class DegradationTests(ProvenanceTestCase):
         frameworks = self.manifest(self.probe(torch="cpu"))["environment"]["frameworks"]
         self.assertEqual(frameworks["pytorch"]["value"], "2.9.0+cpu")
         self.assertEqual(frameworks["pytorch_cuda_build"]["reason"], "cpu_only_build")
+
+    def test_cuda_build_without_cudnn_is_not_called_cpu_only(self):
+        frameworks = self.manifest(self.probe(torch="cuda-no-cudnn"))["environment"]["frameworks"]
+        self.assertEqual(frameworks["pytorch_cuda_build"]["value"], "13.0")
+        self.assertEqual(frameworks["pytorch_cudnn"]["reason"], "source_unavailable")
+
+    def test_torch_probe_sees_pythonpath_installs_but_not_the_current_directory(self):
+        # Real interpreter: a torch on PYTHONPATH (as with pip --user or a vendored build)
+        # must be found, while a stray torch.py in the working directory must not shadow it.
+        stub = self.tmp / "site" / "torch"
+        (stub / "backends").mkdir(parents=True)
+        (stub / "version.py").write_text("cuda = '13.0'\n")
+        (stub / "backends" / "__init__.py").write_text("from . import cudnn\n")
+        (stub / "backends" / "cudnn.py").write_text("def is_available():\n    return True\ndef version():\n    return 91300\n")
+        (stub / "__init__.py").write_text("__version__ = '9.9.9-stub'\nfrom . import version, backends\n")
+        cwd = self.tmp / "cwd"
+        cwd.mkdir()
+        (cwd / "torch.py").write_text("raise SystemExit('shadowed by cwd')\n")
+        env = {"PYTHONPATH": str(self.tmp / "site"), "PATH": "/usr/bin:/bin"}
+        result = subprocess.run(
+            [sys.executable, "-c", prov.TORCH_PROBE], cwd=cwd, env=env, capture_output=True, text=True, check=True
+        )
+        self.assertEqual(json.loads(result.stdout)["version"], "9.9.9-stub")
 
     def test_mixed_governors_are_all_recorded(self):
         sysroot = build_sysroot(self.tmp / "mixed", governors=("performance", "powersave"))

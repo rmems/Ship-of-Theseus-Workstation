@@ -408,7 +408,13 @@ def probe_toolchains(probe: Probe, python: str) -> dict[str, Any]:
     }
 
 
+# Run with the workload's own interpreter environment (user site-packages, PYTHONPATH),
+# so the manifest sees the torch the run imports; only the current directory is dropped
+# from sys.path so a stray local torch.py cannot shadow the real package. Not "-I":
+# that hides user-site and PYTHONPATH installs. Not "-P": that needs Python >= 3.11.
 TORCH_PROBE = (
+    "import sys\n"
+    "sys.path[:] = [p for p in sys.path if p not in ('', '.')]\n"
     "import json\n"
     "try:\n"
     "    import torch\n"
@@ -422,7 +428,7 @@ TORCH_PROBE = (
 
 
 def probe_frameworks(probe: Probe, python: str) -> dict[str, Any]:
-    result, reason = probe.command(python, "-I", "-c", TORCH_PROBE, timeout=FRAMEWORK_TIMEOUT_SECONDS)
+    result, reason = probe.command(python, "-c", TORCH_PROBE, timeout=FRAMEWORK_TIMEOUT_SECONDS)
     if result is None:
         failed = unavailable("pytorch", reason or "command_failed")
         return {"pytorch": failed, "pytorch_cuda_build": failed, "pytorch_cudnn": failed}
@@ -444,7 +450,8 @@ def probe_frameworks(probe: Probe, python: str) -> dict[str, Any]:
     return {
         "pytorch": text(data.get("version"), "unparseable_output"),
         "pytorch_cuda_build": text(data.get("cuda"), "cpu_only_build"),
-        "pytorch_cudnn": text(data.get("cudnn"), "cpu_only_build"),
+        # A CUDA build without a usable cuDNN is not a CPU-only build.
+        "pytorch_cudnn": text(data.get("cudnn"), "source_unavailable" if data.get("cuda") else "cpu_only_build"),
     }
 
 

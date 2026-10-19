@@ -85,7 +85,7 @@ value is a public product or version string, not a host identifier.
 | `environment.cuda.driver_cuda_version` | `nvidia-smi` banner | Keep the `CUDA Version:` number only. The rest of the banner (bus IDs, process names, process paths) is discarded. |
 | `environment.cuda.toolkit_version` | `nvcc --version` | Keep. |
 | `environment.toolchains.{python,rustc,cargo,gcc,julia}` | `--version` | Keep the version only. Install paths are not stored. |
-| `environment.frameworks.{pytorch,pytorch_cuda_build,pytorch_cudnn}` | isolated `python -I` import | Keep. No device query or allocation runs. That smoke test belongs to #4. |
+| `environment.frameworks.{pytorch,pytorch_cuda_build,pytorch_cudnn}` | `python -c` import in the workload's own environment (user site and `PYTHONPATH` kept; only the current directory is dropped from `sys.path`) | Keep. No device query or allocation runs. That smoke test belongs to #4. |
 | `repositories[].{name,commit,dirty}` | operator name + git | Keep the name given by the operator, the HEAD SHA, and the dirty flag. **The local checkout path and remote URL are not stored.** Untracked files do not count as dirty. |
 | `telemetry.{contract_version,collector_name,collector_version}` | operator | Keep. If not given, recorded as `not_provided`. |
 | `links.run_id`, `links.run_kind` | operator | Keep. Must match a restricted pattern or enum. |
