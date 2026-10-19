@@ -537,6 +537,10 @@ class RedactionTests(ProvenanceTestCase):
         leaky = self.manifest(meta=["owner=julia"])
         with self.assertRaisesRegex(prov.ProvenanceError, "local host identity term"):
             prov.validate_manifest(leaky, extra_forbidden=["julia"])
+        for key in ("source", "status", "reason"):
+            leaky = self.manifest(meta=[f"{key}=devbox-01"])
+            with self.assertRaisesRegex(prov.ProvenanceError, "local host identity term", msg=key):
+                prov.validate_manifest(leaky, extra_forbidden=["devbox"])
 
     def test_system_report_id_prefix_does_not_match_hostname(self):
         data = self.manifest()

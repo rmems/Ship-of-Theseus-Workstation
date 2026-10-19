@@ -735,6 +735,9 @@ def identity_scope(location: str, value: str) -> str:
     Schema-fixed text is excluded so a host named e.g. "theseus" or a login equal to a
     public GitHub owner does not block every collect; the schema still pins that text.
     """
+    if location.startswith("$.workload_metadata."):
+        # Operator text: keys like "source" or "reason" here are free strings, not enums.
+        return value
     if location in SCHEMA_CONSTANT_LOCATIONS or location == OS_ID_LOCATION:
         return ""
     if VENDOR_STRING_LOCATION.fullmatch(location):
