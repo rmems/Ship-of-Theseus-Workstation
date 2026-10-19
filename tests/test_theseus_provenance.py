@@ -432,6 +432,21 @@ class RedactionTests(ProvenanceTestCase):
         finally:
             self.identity_patch.start()
 
+    def test_hostname_matching_schema_constants_does_not_block_collection(self):
+        # A host named "theseus" (or user "ship") matches inside node.label / collector.name,
+        # which are schema constants; collection must still succeed, but real leaks still fail.
+        self.identity_patch.stop()
+        try:
+            with mock.patch.object(prov.socket, "gethostname", return_value="theseus"), mock.patch.object(
+                prov.getpass, "getuser", return_value="provenance"
+            ):
+                data = self.manifest()
+                prov.validate_manifest(data, extra_forbidden=["theseus", "ship", "provenance"])
+                with self.assertRaisesRegex(prov.ProvenanceError, "local host identity term"):
+                    self.manifest(meta=["host=theseus"])
+        finally:
+            self.identity_patch.start()
+
     def test_metadata_path_values_are_rejected_at_collection(self):
         with self.assertRaisesRegex(prov.ProvenanceError, "home_or_root_path"):
             self.manifest(meta=["dataset=/home/someone/data.parquet"])

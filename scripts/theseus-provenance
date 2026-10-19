@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from jsonschema import Draft202012Validator, FormatChecker, ValidationError
+from jsonschema import Draft202012Validator, FormatChecker
 
 
 SCHEMA_VERSION = "1.0.0"
@@ -92,6 +92,7 @@ FORBIDDEN_VALUE_PATTERNS = (
     ("url_with_credentials", re.compile(r"[a-z][a-z0-9+.-]*://[^/\s]*@", re.IGNORECASE)),
 )
 # Generic words that would make host-identity matching useless if a host happened to use them.
+SCHEMA_CONSTANT_LOCATIONS = frozenset({"$.node.label", "$.collector.name", "$.redaction.host_fingerprint_method"})
 IDENTITY_TERM_ALLOWLIST = {"localhost", "root", "runner", "fedora", "ship-of-theseus", "user", "admin"}
 SCP_LIKE_GIT_REMOTE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:")
 
@@ -655,6 +656,10 @@ def redaction_violations(manifest: Any, extra_forbidden: list[str] | None = None
                 violations.append(f"{location}: value looks like {label}")
         if SCP_LIKE_GIT_REMOTE.search(value):
             violations.append(f"{location}: value looks like a git remote")
+        if location in SCHEMA_CONSTANT_LOCATIONS:
+            # Fixed by the schema (`const`), so they cannot carry host data; a hostname
+            # such as "theseus" would otherwise match inside them and block every collect.
+            continue
         for pattern in extra:
             if pattern.search(value):
                 violations.append(f"{location}: value contains a local host identity term")
