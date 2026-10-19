@@ -82,10 +82,14 @@ FORBIDDEN_KEY = re.compile(
     re.IGNORECASE,
 )
 # Value shapes that indicate leaked host identifiers or local paths.
+# A path may start anywhere not preceded by a path-name character, so paths inside
+# lists ("a.csv,/home/x"), brackets or pipes are caught, while "owner/repo",
+# "a/b" and dates like "08/15/2026" are not.
+_PATH_START = r"(?<![A-Za-z0-9._~-])"
 FORBIDDEN_VALUE_PATTERNS = (
-    ("home_or_root_path", re.compile(r"(^|[\s=:'\"(])(~/|/home/|/root(/|$)|/Users/|/var/home/|[A-Za-z]:\\\\Users\\\\)")),
+    ("home_or_root_path", re.compile(_PATH_START + r"(~/|/home/|/root(/|$)|/Users/|/var/home/|[A-Za-z]:\\\\Users\\\\)")),
     # Any absolute POSIX path with at least one directory, or a drive-letter path.
-    ("absolute_path", re.compile(r"(^|[\s=:'\"(])(/[A-Za-z0-9._~-]+/|[A-Za-z]:[\\/])")),
+    ("absolute_path", re.compile(_PATH_START + r"(/[A-Za-z0-9._~-]+/|[A-Za-z]:[\\/])")),
     ("ipv4_address", re.compile(r"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?![\d.])")),
     ("ipv6_address", re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{1,4}:){4,7}[0-9A-Fa-f]{1,4}(?![0-9A-Fa-f:])")),
     ("mac_address", re.compile(r"(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f])")),
@@ -95,7 +99,7 @@ FORBIDDEN_VALUE_PATTERNS = (
     # Any URL: remotes (including plain https git remotes) and hosts are never stored.
     ("url", re.compile(r"\b[a-z][a-z0-9+.-]*://\S", re.IGNORECASE)),
     # Relative paths that walk the local tree ("../private/x", "./data/x").
-    ("relative_path", re.compile(r"(^|[\s=:'\"(])\.{1,2}[/\\]")),
+    ("relative_path", re.compile(_PATH_START + r"\.{1,2}[/\\]")),
 )
 # Candidates for compressed IPv6 ("2001:db8::1", "fe80::1"); confirmed with ipaddress so
 # Rust-style paths such as "std::fmt" do not match.
