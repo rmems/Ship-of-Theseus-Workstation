@@ -447,6 +447,16 @@ class RedactionTests(ProvenanceTestCase):
         finally:
             self.identity_patch.start()
 
+    def test_logins_matching_schema_enum_words_do_not_block_collection(self):
+        # Enum values (source/status/reason) and the os-release ID cannot carry host data,
+        # so logins like these must not make every collect fail.
+        data = self.manifest()
+        for term in ("julia", "python", "nvidia", "operator", "fedora", "git", "available", "dmi"):
+            prov.validate_manifest(data, extra_forbidden=[term])
+        leaky = self.manifest(meta=["owner=julia"])
+        with self.assertRaisesRegex(prov.ProvenanceError, "local host identity term"):
+            prov.validate_manifest(leaky, extra_forbidden=["julia"])
+
     def test_system_report_id_prefix_does_not_match_hostname(self):
         data = self.manifest()
         data["links"]["system_report"] = {

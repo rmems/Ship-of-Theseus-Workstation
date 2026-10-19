@@ -93,6 +93,17 @@ FORBIDDEN_VALUE_PATTERNS = (
 )
 # Generic words that would make host-identity matching useless if a host happened to use them.
 SCHEMA_CONSTANT_LOCATIONS = frozenset({"$.node.label", "$.collector.name", "$.redaction.host_fingerprint_method"})
+# Keys whose values the schema restricts to a fixed enum/const ($defs source, reason, status).
+SCHEMA_ENUM_KEYS = frozenset({"source", "status", "reason"})
+# os-release ID is a distro identifier shipped by the OS (e.g. "ubuntu", "debian"), not host-set.
+OS_ID_LOCATION = "$.environment.os.id.value"
+# Vendor-supplied model strings (GPU name, CPU model, firmware/board vendor), e.g.
+# "NVIDIA GeForce RTX 5080"; they come from the hardware, not from host configuration.
+VENDOR_STRING_LOCATION = re.compile(
+    r"\$\.environment\.(gpu\.devices\.value\[\d+\]\.name"
+    r"|cpu\.model"
+    r"|firmware\.(bios_vendor|board_vendor|board_name))\.value"
+)
 SYSTEM_REPORT_ID_LOCATION = "$.links.system_report.report_id"
 SYSTEM_REPORT_ID_PREFIX = "ship-of-theseus-"
 REPO_NAME_LOCATION = re.compile(r"\$\.repositories\[\d+\]\.name")
@@ -671,7 +682,11 @@ def identity_scope(location: str, value: str) -> str:
     Schema-fixed text is excluded so a host named e.g. "theseus" or a login equal to a
     public GitHub owner does not block every collect; the schema still pins that text.
     """
-    if location in SCHEMA_CONSTANT_LOCATIONS:
+    if location in SCHEMA_CONSTANT_LOCATIONS or location == OS_ID_LOCATION:
+        return ""
+    if VENDOR_STRING_LOCATION.fullmatch(location):
+        return ""
+    if location.rsplit(".", 1)[-1] in SCHEMA_ENUM_KEYS:
         return ""
     if location == SYSTEM_REPORT_ID_LOCATION:
         # Schema pattern ^ship-of-theseus-[0-9TZ]+$: only the timestamp varies.
