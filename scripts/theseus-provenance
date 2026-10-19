@@ -93,6 +93,8 @@ FORBIDDEN_VALUE_PATTERNS = (
 )
 # Generic words that would make host-identity matching useless if a host happened to use them.
 SCHEMA_CONSTANT_LOCATIONS = frozenset({"$.node.label", "$.collector.name", "$.redaction.host_fingerprint_method"})
+SYSTEM_REPORT_ID_LOCATION = "$.links.system_report.report_id"
+SYSTEM_REPORT_ID_PREFIX = "ship-of-theseus-"
 REPO_NAME_LOCATION = re.compile(r"\$\.repositories\[\d+\]\.name")
 IDENTITY_TERM_ALLOWLIST = {"localhost", "root", "runner", "fedora", "ship-of-theseus", "user", "admin"}
 SCP_LIKE_GIT_REMOTE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:")
@@ -657,19 +659,27 @@ def redaction_violations(manifest: Any, extra_forbidden: list[str] | None = None
                 violations.append(f"{location}: value looks like {label}")
         if SCP_LIKE_GIT_REMOTE.search(value):
             violations.append(f"{location}: value looks like a git remote")
-        if location in SCHEMA_CONSTANT_LOCATIONS:
-            # Fixed by the schema (`const`), so they cannot carry host data; a hostname
-            # such as "theseus" would otherwise match inside them and block every collect.
-            continue
-        identity_scope = value
-        if REPO_NAME_LOCATION.fullmatch(location) and "/" in value:
-            # The owner in "owner/repo" is a public GitHub handle that may equal the local
-            # login; the schema pattern already rules out paths and URLs in this field.
-            identity_scope = value.split("/", 1)[1]
-        for pattern in extra:
-            if pattern.search(identity_scope):
-                violations.append(f"{location}: value contains a local host identity term")
+        scope = identity_scope(location, value)
+        if any(pattern.search(scope) for pattern in extra):
+            violations.append(f"{location}: value contains a local host identity term")
     return violations
+
+
+def identity_scope(location: str, value: str) -> str:
+    """The part of a value that could carry host identity, for the identity-term scan.
+
+    Schema-fixed text is excluded so a host named e.g. "theseus" or a login equal to a
+    public GitHub owner does not block every collect; the schema still pins that text.
+    """
+    if location in SCHEMA_CONSTANT_LOCATIONS:
+        return ""
+    if location == SYSTEM_REPORT_ID_LOCATION:
+        # Schema pattern ^ship-of-theseus-[0-9TZ]+$: only the timestamp varies.
+        return value.removeprefix(SYSTEM_REPORT_ID_PREFIX)
+    if REPO_NAME_LOCATION.fullmatch(location) and "/" in value:
+        # "owner/repo": the owner is a public handle; the pattern rules out paths and URLs.
+        return value.split("/", 1)[1]
+    return value
 
 
 def load_schema() -> dict[str, Any]:

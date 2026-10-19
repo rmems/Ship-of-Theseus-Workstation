@@ -447,6 +447,16 @@ class RedactionTests(ProvenanceTestCase):
         finally:
             self.identity_patch.start()
 
+    def test_system_report_id_prefix_does_not_match_hostname(self):
+        data = self.manifest()
+        data["links"]["system_report"] = {
+            "source": "operator",
+            "status": "available",
+            "report_id": "ship-of-theseus-20261019T000000Z",
+            "sha256": "0" * 64,
+        }
+        prov.validate_manifest(data, extra_forbidden=["theseus", "ship"])
+
     def test_repo_owner_matching_local_login_does_not_block_collection(self):
         data = self.manifest(repos=[f"rmems/gaming-telemetry={self.tmp / 'workload'}"])
         prov.validate_manifest(data, extra_forbidden=["rmems"])
