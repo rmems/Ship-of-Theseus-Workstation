@@ -101,11 +101,16 @@ and **fail** (they do not strip the data and continue) if:
 - any key contains `hostname`, `username`, `serial`, `uuid`, `mac_address`,
   `ip_address`, `path`, `home`, `email`, `token`, `secret`, `password`,
   `credential`, `remote_url`, or `bus_id`;
-- any string value looks like a home or absolute path, IPv4, IPv6, MAC,
-  UUID, email, credentialed URL, or `git@host:` remote;
-- any string contains the running host's hostname or username. Collection
-  checks this automatically. For `validate`, pass the terms with
-  `--forbid TERM`.
+- any string value looks like a home, absolute or `./`/`../` relative path,
+  IPv4, IPv6 (including compressed forms such as `2001:db8::1`), MAC, UUID,
+  email, any URL (so `https://` git remotes too), or `git@host:` remote;
+- any operator-supplied or free-form string contains the running host's
+  hostname or username. Collection checks this automatically. For
+  `validate`, pass the terms with `--forbid TERM`. Values the schema pins to
+  a fixed set (`source`, `status`, `reason`, `node.label`, `collector.name`,
+  the `ship-of-theseus-` prefix of `report_id`), the os-release ID, vendor
+  model strings (GPU name, CPU model, firmware vendor/board) and the owner in
+  `owner/repo` cannot carry host data, so this check skips them.
 
 ## How #4, #5, and #6 attach a manifest
 

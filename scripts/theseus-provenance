@@ -19,6 +19,7 @@ import argparse
 import getpass
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import platform
@@ -90,7 +91,14 @@ FORBIDDEN_VALUE_PATTERNS = (
     ("uuid", re.compile(r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}")),
     ("email_address", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
     ("url_with_credentials", re.compile(r"[a-z][a-z0-9+.-]*://[^/\s]*@", re.IGNORECASE)),
+    # Any URL: remotes (including plain https git remotes) and hosts are never stored.
+    ("url", re.compile(r"\b[a-z][a-z0-9+.-]*://\S", re.IGNORECASE)),
+    # Relative paths that walk the local tree ("../private/x", "./data/x").
+    ("relative_path", re.compile(r"(^|[\s=:'\"(])\.{1,2}[/\\]")),
 )
+# Candidates for compressed IPv6 ("2001:db8::1", "fe80::1"); confirmed with ipaddress so
+# Rust-style paths such as "std::fmt" do not match.
+IPV6_COMPRESSED_CANDIDATE = re.compile(r"(?<![\w:.])[0-9A-Fa-f:]*::[0-9A-Fa-f:.%\w]*(?![\w:])")
 # Generic words that would make host-identity matching useless if a host happened to use them.
 SCHEMA_CONSTANT_LOCATIONS = frozenset({"$.node.label", "$.collector.name", "$.redaction.host_fingerprint_method"})
 # Keys whose values the schema restricts to a fixed enum/const ($defs source, reason, status).
@@ -670,10 +678,24 @@ def redaction_violations(manifest: Any, extra_forbidden: list[str] | None = None
                 violations.append(f"{location}: value looks like {label}")
         if SCP_LIKE_GIT_REMOTE.search(value):
             violations.append(f"{location}: value looks like a git remote")
+        if contains_compressed_ipv6(value):
+            violations.append(f"{location}: value looks like ipv6_address")
         scope = identity_scope(location, value)
         if any(pattern.search(scope) for pattern in extra):
             violations.append(f"{location}: value contains a local host identity term")
     return violations
+
+
+def contains_compressed_ipv6(value: str) -> bool:
+    for candidate in IPV6_COMPRESSED_CANDIDATE.findall(value):
+        if not any(char.isdigit() or char.lower() in "abcdef" for char in candidate.replace("::", "")):
+            continue  # bare "::" carries no address
+        try:
+            ipaddress.IPv6Address(candidate.split("%", 1)[0])
+        except ValueError:
+            continue
+        return True
+    return False
 
 
 def identity_scope(location: str, value: str) -> str:

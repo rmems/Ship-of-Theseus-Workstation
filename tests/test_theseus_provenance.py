@@ -447,6 +447,26 @@ class RedactionTests(ProvenanceTestCase):
         finally:
             self.identity_patch.start()
 
+    def test_compressed_ipv6_relative_paths_and_urls_are_rejected(self):
+        base = self.manifest()
+        leaks = {
+            "2001:db8::1": "ipv6_address",
+            "fe80::1%eth0": "ipv6_address",
+            "peer [2001:db8::42]:443": "ipv6_address",
+            "../private/train.csv": "relative_path",
+            "./data/train.csv": "relative_path",
+            "https://github.com/someone/private-repo.git": "url",
+        }
+        for value, label in leaks.items():
+            data = copy.deepcopy(base)
+            data["workload_metadata"]["note"] = value
+            with self.assertRaisesRegex(prov.ProvenanceError, label, msg=value):
+                prov.validate_manifest(data)
+        for harmless in ("data/train.csv", "std::fmt::Display", "12:30:45", "v1.2.3"):
+            data = copy.deepcopy(base)
+            data["workload_metadata"]["note"] = harmless
+            prov.validate_manifest(data)
+
     def test_logins_matching_schema_enum_words_do_not_block_collection(self):
         # Enum values (source/status/reason) and the os-release ID cannot carry host data,
         # so logins like these must not make every collect fail.
