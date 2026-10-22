@@ -16,7 +16,10 @@ Run from the repo root. "Verified" means it ran successfully in a fresh checkout
 | `scripts/theseus-report --help` | verified |
 | `shellcheck scripts/*.sh` | ran, exit 1: four SC2329 info notices in `runner-health.sh` (functions called indirectly via `check`) |
 | `scripts/theseus-report collect`, `validate` | not run (`collect` reads the live host and writes under `benchmarks/`; `validate` needs a collected report) |
-| `scripts/verify-node-environment.sh`, `collect-node-inventory.sh`, `benchmark-node.sh`, `capture-telemetry.sh` | not run (probe the host and need its GPU/Fedora tools; written to `benchmarks/`) |
+| `scripts/verify-node-environment.sh` | not run (checks host-specific Fedora, `nvidia-smi` and `nvcc` prerequisites) |
+| `scripts/collect-node-inventory.sh` | not run (probes the host and writes to `benchmarks/`; `lshw` and NVIDIA queries are optional) |
+| `scripts/benchmark-node.sh` | not run (probes the host, including `nvidia-smi` and a 1 GiB temporary-file write test; writes to `benchmarks/`) |
+| `scripts/capture-telemetry.sh` | not run (probes the host and writes to `benchmarks/`; missing GPU readings are recorded as empty fields) |
 | `scripts/runner-health.sh` | not run (checks the self-hosted runner and service on the host) |
 | `bash .cursor/install.sh` | not run (changes the host: apt, `/usr/local/bin`, `/etc/profile.d`) |
 
