@@ -1,0 +1,4 @@
+{
+  "name": "Ship-of-Theseus-Workstation",
+  "install": "bash .cursor/install.sh"
+}
