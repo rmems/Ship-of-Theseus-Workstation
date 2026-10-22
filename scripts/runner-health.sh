@@ -63,10 +63,12 @@ skip() {
   log "SKIP  $1"
 }
 
+# shellcheck disable=SC2329 # passed to check and invoked indirectly
 check_executable() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# shellcheck disable=SC2329 # passed to check and invoked indirectly
 check_free_space() {
   local available_kib
   local status=1
@@ -78,10 +80,12 @@ check_free_space() {
   return "$status"
 }
 
+# shellcheck disable=SC2329 # passed to check and invoked indirectly
 check_runner_registered() {
   [[ -d "$runner_dir" && -f "$runner_dir/.runner" ]]
 }
 
+# shellcheck disable=SC2329 # passed to check and invoked indirectly
 check_service_active() {
   systemctl is-active --quiet "$service_name"
 }
