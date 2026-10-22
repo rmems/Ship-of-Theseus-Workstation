@@ -190,3 +190,21 @@ class RedactionTests(ProvenanceTestCase):
         with self.assertRaisesRegex(prov.ProvenanceError, "home_or_root_path"):
             self.manifest(meta=["dataset=~/data.parquet"])
 
+    def test_fingerprint_method_exemption_is_pinned_to_its_schema_location(self):
+        # Blocks review (PR #25): the exemption used to match the key name, so
+        # workload_metadata could smuggle any value under that key.
+        for value in ("/home/alice/private/data.csv", "10.0.0.7"):
+            with self.subTest(value=value), self.assertRaises(prov.ProvenanceError):
+                self.manifest(meta=[f"host_fingerprint_method={value}"])
+        data = self.manifest()
+        named = copy.deepcopy(data)
+        named["workload_metadata"]["host_fingerprint_method"] = "run-on-devbox"
+        with self.assertRaisesRegex(prov.ProvenanceError, "local host identity term"):
+            prov.validate_manifest(named, extra_forbidden=["devbox"])
+        self.assertEqual(prov.redaction_violations(data), [])
+        tampered = copy.deepcopy(data)
+        tampered["redaction"]["host_fingerprint_method"] = "/home/alice/x"
+        self.assertIn(
+            "$.redaction.host_fingerprint_method: value looks like home_or_root_path",
+            prov.redaction_violations(tampered),
+        )
