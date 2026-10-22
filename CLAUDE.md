@@ -42,7 +42,7 @@ workflow-file issue), so ShellCheck is not enforced in CI today. No hardware-gat
 - Keep the repo narrow: node-level infrastructure only. Application code belongs in its own repository.
 - Collectors invoke external tools but do not vendor them; keep `THIRD_PARTY_NOTICES.md` current.
 - Third-party Actions are pinned to commit SHAs with `persist-credentials: false`; ShellCheck is pinned by version and SHA-256. Keep that pattern.
-- Source files carry no SPDX headers; do not add them. Only `LICENSE` (MIT) applies, and there is no publish `exclude`/`include` list. `.codacy.yml` excludes `CLAUDE.md` from Codacy analysis only.
+- Source files carry no SPDX headers; do not add them. `LICENSE` (MIT) applies to original scripts and documentation, not visual assets; see `assets/LICENSE.md`. There is no publish `exclude`/`include` list. `.codacy.yml` excludes `CLAUDE.md` from Codacy analysis only.
 
 ## Gotchas
 
