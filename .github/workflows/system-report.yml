@@ -30,3 +30,7 @@ jobs:
         run: python -m unittest -v tests/test_theseus_report.py
       - name: Check command entry point
         run: scripts/theseus-report --help
+      - name: Run provenance-manifest tests
+        run: python -m unittest -v tests/test_theseus_provenance.py tests/test_theseus_provenance_policy.py tests/test_theseus_provenance_schema.py
+      - name: Check provenance entry point
+        run: scripts/theseus-provenance --help
