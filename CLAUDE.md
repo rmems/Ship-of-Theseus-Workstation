@@ -31,6 +31,7 @@ workflow-file issue), so ShellCheck is not enforced in CI today. No hardware-gat
 - `tests/test_theseus_report.py` + `tests/fixtures/system-report/`: unit tests over canned `lscpu`, `lsblk`, `free`, `nvidia-smi`, `nvcc`, and `os-release` output.
 - `configs/node-provenance.toml`: node description; the `[software]` fields are filled only from collected inventory.
 - `docs/`: runbooks and records. `docs/change-log.md` is a curated infrastructure log, not a mirror of `git log`.
+- `.codacy.yml`: Codacy `exclude_paths` (currently just `CLAUDE.md`).
 - `.cursor/`: Cursor Cloud Agent bootstrap, not a project build step. `assets/`, `THIRD_PARTY_NOTICES.md`: images (excluded from the MIT license) and tool attribution.
 
 ## Invariants and non-goals
@@ -41,7 +42,7 @@ workflow-file issue), so ShellCheck is not enforced in CI today. No hardware-gat
 - Keep the repo narrow: node-level infrastructure only. Application code belongs in its own repository.
 - Collectors invoke external tools but do not vendor them; keep `THIRD_PARTY_NOTICES.md` current.
 - Third-party Actions are pinned to commit SHAs with `persist-credentials: false`; ShellCheck is pinned by version and SHA-256. Keep that pattern.
-- Source files carry no SPDX headers; do not add them. Only `LICENSE` (MIT) applies, and there is no `exclude`/`include` list, so `CLAUDE.md` needs no manifest change.
+- Source files carry no SPDX headers; do not add them. Only `LICENSE` (MIT) applies, and there is no publish `exclude`/`include` list. `.codacy.yml` excludes `CLAUDE.md` from Codacy analysis only.
 
 ## Gotchas
 
