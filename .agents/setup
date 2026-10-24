@@ -71,8 +71,12 @@ if ! uv_is_pinned; then
     exit 1
   fi
 fi
-# system-report.yml uses Python 3.13.
+# system-report.yml uses Python 3.13. A leftover venv from another version
+# would keep receiving requirements, so recreate it.
 uv python install 3.13
+if [ -x .venv/bin/python ] && ! .venv/bin/python -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)'; then
+  rm -rf .venv
+fi
 if [ ! -x .venv/bin/python ]; then
   uv venv --python 3.13 .venv
 fi
