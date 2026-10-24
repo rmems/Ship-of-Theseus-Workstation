@@ -30,6 +30,7 @@ jobs:
           tar -xf shellcheck.tar.xz
           echo "$PWD/shellcheck-v0.11.0" >> "$GITHUB_PATH"
       - name: Verify pinned ShellCheck
-        run: shellcheck --version | grep -qx 'version: 0.11.0'
+        run: |
+          shellcheck --version | grep -qx 'version: 0.11.0'
       - name: ShellCheck all repository scripts
         run: shellcheck scripts/*.sh
