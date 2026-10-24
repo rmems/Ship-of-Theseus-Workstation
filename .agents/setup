@@ -62,6 +62,33 @@ link_owned_tool() {
   $SUDO ln -s "$tool" "$dest"
 }
 
+# True when dest is the regular file this setup writes, not a symlink.
+python3_wrapper_is_ours() {
+  local dest="$1"
+  [ -f "$dest" ] && [ ! -L "$dest" ] || return 1
+  if grep -qF 'amp-orb-setup python3 wrapper' "$dest"; then
+    return 0
+  fi
+  grep -qF '/.venv/bin/python3' "$dest" && grep -qF 'exec /usr/bin/python3' "$dest"
+}
+
+# Publish the wrapper by renaming a file in the same directory. mv replaces
+# the directory entry and does not follow a symlink at the destination.
+install_python3_wrapper() {
+  local venv_python="$1" stage dest_tmp
+  stage="$(mktemp)"
+  dest_tmp="/usr/local/bin/.amp-orb-python3.$$"
+  trap 'rm -f "$stage"; $SUDO rm -f "$dest_tmp"' EXIT
+  printf '#!/bin/sh\n# amp-orb-setup python3 wrapper\nif [ -x %q ]; then exec %q "$@"; fi\nexec /usr/bin/python3 "$@"\n' \
+    "$venv_python" "$venv_python" >"$stage"
+  chmod 0755 "$stage"
+  $SUDO cp "$stage" "$dest_tmp"
+  $SUDO chmod 0755 "$dest_tmp"
+  $SUDO mv -f "$dest_tmp" /usr/local/bin/python3
+  rm -f "$stage"
+  trap - EXIT
+}
+
 # Install Debian packages that are not already present.
 apt_install() {
   local missing=() pkg
@@ -158,13 +185,17 @@ for dir in "${tool_dirs[@]}"; do
   done
 done
 
-# scripts/theseus-report runs `#!/usr/bin/env python3` and needs the venv's jsonschema,
-# so point python3 in every shell at the venv, falling back to the system Python.
+# scripts/theseus-report runs `#!/usr/bin/env python3` and needs the venv's jsonschema.
+# /usr/local/bin precedes /usr/bin on the default PATH. Install the wrapper when
+# that path is free, and refresh it when it is the regular file this setup wrote.
+# Leave an unrelated file or any symlink alone.
 venv_python="$repo_root/.venv/bin/python3"
-printf '#!/bin/sh\nif [ -x %q ]; then exec %q "$@"; fi\nexec /usr/bin/python3 "$@"\n' \
-  "$venv_python" "$venv_python" |
-  $SUDO tee /usr/local/bin/python3 >/dev/null
-$SUDO chmod 0755 /usr/local/bin/python3
+python3_dest="/usr/local/bin/python3"
+if { [ ! -e "$python3_dest" ] && [ ! -L "$python3_dest" ]; } || python3_wrapper_is_ours "$python3_dest"; then
+  install_python3_wrapper "$venv_python"
+else
+  echo "warning: leaving existing ${python3_dest} unchanged" >&2
+fi
 
 # .venv/ is not in .gitignore here, so keep it out of `git status` in the orb.
 exclude_file="$(git rev-parse --git-path info/exclude)"
