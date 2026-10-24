@@ -7,15 +7,17 @@ tiers are in `README.md`, and runbooks are in `docs/` (`node-baseline.md`, `self
 ## Commands
 
 Run from the repo root. "Verified" means it ran successfully in a fresh checkout on Python 3.13.16 and ShellCheck 0.11.0
-(Linux, CPU only, no GPU, no Fedora). The repo has no `.gitignore`, so set `PYTHONDONTWRITEBYTECODE=1` to keep the tree clean.
+(Linux, CPU only, no GPU, no Fedora). `.gitignore` covers only `__pycache__/` and `*.py[cod]`; set `PYTHONDONTWRITEBYTECODE=1` anyway.
 
 | Command | Status |
 |---|---|
 | `python3 -m pip install -r requirements.txt` (`jsonschema[format]>=4.23,<5`) | not run (`jsonschema` was already installed; CI runs it) |
 | `python3 -m unittest -v tests/test_theseus_report.py` | verified (17 tests) |
 | `scripts/theseus-report --help` | verified |
-| `shellcheck scripts/*.sh` | ran, exit 1: four SC2329 info notices in `runner-health.sh` (functions called indirectly via `check`) |
-| `scripts/theseus-report collect`, `validate` | not run (`collect` reads the live host and writes under `benchmarks/`; `validate` needs a collected report) |
+| `python3 -m unittest -v tests/test_theseus_provenance.py tests/test_theseus_provenance_policy.py tests/test_theseus_provenance_schema.py` | verified (47 tests) |
+| `scripts/theseus-provenance --help` | verified |
+| `shellcheck scripts/*.sh` | verified (ShellCheck 0.11.0, exit 0) |
+| `scripts/theseus-report collect`, `validate`; `scripts/theseus-provenance collect`, `validate` | not run (`collect` reads the live host and writes under `benchmarks/`; `validate` needs a collected file) |
 | `scripts/verify-node-environment.sh` | not run (checks host-specific Fedora, `nvidia-smi` and `nvcc` prerequisites) |
 | `scripts/collect-node-inventory.sh` | not run (probes the host and writes to `benchmarks/`; `lshw` and NVIDIA queries are optional) |
 | `scripts/benchmark-node.sh` | not run (probes the host, including `nvidia-smi` and a 1 GiB temporary-file write test; writes to `benchmarks/`) |
@@ -23,15 +25,15 @@ Run from the repo root. "Verified" means it ran successfully in a fresh checkout
 | `scripts/runner-health.sh` | not run (checks the self-hosted runner and service on the host) |
 | `bash .cursor/install.sh` | not run (changes the host: apt, `/usr/local/bin`, `/etc/profile.d`) |
 
-CI: `system-report.yml` runs the unittest and `--help` rows above on Python 3.13 on hosted runners. `portable-ci.yml` is meant to
-run pinned ShellCheck 0.11.0 on `scripts/*.sh`, but its recent runs all end in `failure` with 0 jobs (GitHub reports a possible
-workflow-file issue), so ShellCheck is not enforced in CI today. No hardware-gate workflow exists yet.
+CI: `system-report.yml` runs the report and provenance unittest rows and both `--help` rows above on Python 3.13 on hosted runners.
+`portable-ci.yml` runs pinned ShellCheck 0.11.0 on `scripts/*.sh` and currently passes. No hardware-gate workflow exists yet.
 
 ## Architecture map
 
-- `scripts/theseus-report`: the only Python tool (`collect` and `validate`). It emits a sanitized `system-report.json` checked against `schemas/system-report.schema.json`.
+- `scripts/theseus-report`: Python tool (`collect` and `validate`). It emits a sanitized `system-report.json` checked against `schemas/system-report.schema.json`.
+- `scripts/theseus-provenance`: Python tool (`collect` and `validate`) for the experiment provenance manifest, checked against `schemas/provenance-manifest.schema.json`. Contract and redaction rules are in `docs/provenance-manifest.md`.
 - `scripts/*.sh`: Bash collectors (inventory, verification, benchmark, telemetry, runner health). Each refuses to reuse an existing output path and writes to `benchmarks/` by default.
-- `tests/test_theseus_report.py` + `tests/fixtures/system-report/`: unit tests over canned `lscpu`, `lsblk`, `free`, `nvidia-smi`, `nvcc`, and `os-release` output.
+- `tests/test_theseus_report.py` + `tests/fixtures/system-report/`: unit tests over canned `lscpu`, `lsblk`, `free`, `nvidia-smi`, `nvcc`, and `os-release` output. `tests/test_theseus_provenance*.py` + `tests/fixtures/provenance/` cover the provenance tool.
 - `configs/node-provenance.toml`: node description; the `[software]` fields are filled only from collected inventory.
 - `docs/`: runbooks and records. `docs/change-log.md` is a curated infrastructure log, not a mirror of `git log`.
 - `.codacy.yml`: Codacy `exclude_paths` (currently just `CLAUDE.md`).
@@ -52,6 +54,5 @@ workflow-file issue), so ShellCheck is not enforced in CI today. No hardware-gat
 - `benchmarks/` is referenced as the output directory but does not exist and is not gitignored; never commit generated output.
 - `.claude/` and `.venv/` are not gitignored (`.cursor/install.sh` only adds `.venv` to `.git/info/exclude`); do not commit local agent state.
 - `scripts/theseus-report` has a `#!/usr/bin/env python3` shebang and needs `jsonschema` importable there.
-- A local `shellcheck scripts/*.sh` exits 1 on the info-level SC2329 notices, so it would fail `portable-ci.yml` once that workflow actually runs, even though nothing is broken.
 - Never run `cargo`/registry/publish-style commands; nothing here is published.
 - Edit only what the task needs.
