@@ -2,7 +2,7 @@
 
 Claude-specific notes only. There is no `AGENTS.md` in this repo; project overview, engineering principles, and the CI
 tiers are in `README.md`, and runbooks are in `docs/` (`node-baseline.md`, `self-hosted-runner.md`, `backup-recovery.md`,
-`system-report.md`), so they are not repeated here.
+`system-report.md`, `provenance-manifest.md`), so they are not repeated here.
 
 ## Commands
 
@@ -43,6 +43,7 @@ CI: `system-report.yml` runs the report and provenance unittest rows and both `-
 
 - Do not run provisioning, node-cleanup, or runner scripts from an agent session; read them. Mark them "not run (changes the host)".
 - The system report is an allowlist: no hostname, username, IP/MAC, serial, UUID, disk name, mountpoint, private path, env var, package list, process command line, token, credential, or raw command output (`docs/system-report.md`). Do not widen it without bumping the schema.
+- The provenance manifest has its own redaction contract (`docs/provenance-manifest.md`): the host fingerprint is a keyed hash of the machine ID, and checkout paths and git remote URLs are never stored. A failed probe records `unavailable` with a reason, never a guessed value. Do not weaken it as a side effect of other work.
 - Fail honestly: unavailable collectors record `unavailable` or `failed`; never fabricate versions or results (`configs/node-provenance.toml` says "do not guess versions").
 - Keep the repo narrow: node-level infrastructure only. Application code belongs in its own repository.
 - Collectors invoke external tools but do not vendor them; keep `THIRD_PARTY_NOTICES.md` current.
