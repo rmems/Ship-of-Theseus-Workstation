@@ -147,10 +147,15 @@ if ! command -v shellcheck >/dev/null 2>&1 || ! shellcheck_is_pinned shellcheck;
     rm -rf "$tmp"
     trap - EXIT
     # ~/.local/bin is ahead of /usr/local/bin. Move an older shellcheck out of
-    # that directory so the pin wins, without deleting the previous executable.
+    # that directory so the pin wins. Keep the first backup, and keep any later
+    # copy under a new name.
     if [ -x "$HOME/.local/bin/shellcheck" ] && ! shellcheck_is_pinned "$HOME/.local/bin/shellcheck"; then
       mkdir -p "$HOME/.amp-orb-backup"
-      mv -f "$HOME/.local/bin/shellcheck" "$HOME/.amp-orb-backup/shellcheck"
+      backup="$HOME/.amp-orb-backup/shellcheck"
+      if [ -e "$backup" ]; then
+        backup="$(mktemp "$HOME/.amp-orb-backup/shellcheck.XXXXXX")"
+      fi
+      mv -f "$HOME/.local/bin/shellcheck" "$backup"
     fi
     hash -r
     if ! command -v shellcheck >/dev/null 2>&1 || ! shellcheck_is_pinned shellcheck; then
