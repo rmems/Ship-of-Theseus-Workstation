@@ -37,6 +37,10 @@ uv_is_pinned() {
   esac
 }
 
+shellcheck_is_pinned() {
+  "$1" --version 2>/dev/null | grep -qx 'version: 0.11.0'
+}
+
 # Install Debian packages that are not already present.
 apt_install() {
   local missing=() pkg
@@ -83,7 +87,7 @@ fi
 uv pip install --python .venv/bin/python -r requirements.txt
 
 # --- ShellCheck 0.11.0 (portable-ci.yml checks the exact version) ---
-if ! shellcheck --version 2>/dev/null | grep -qx 'version: 0.11.0'; then
+if ! command -v shellcheck >/dev/null 2>&1 || ! shellcheck_is_pinned shellcheck; then
   if [ "$(uname -m)" = "x86_64" ]; then
     tmp="$(mktemp -d)"
     trap 'rm -rf "$tmp"' EXIT
@@ -94,6 +98,15 @@ if ! shellcheck --version 2>/dev/null | grep -qx 'version: 0.11.0'; then
     $SUDO install -m 0755 "$tmp/shellcheck-v0.11.0/shellcheck" /usr/local/bin/shellcheck
     rm -rf "$tmp"
     trap - EXIT
+    # ~/.local/bin is ahead of /usr/local/bin. An older shellcheck there hides the pin.
+    if [ -x "$HOME/.local/bin/shellcheck" ] && ! shellcheck_is_pinned "$HOME/.local/bin/shellcheck"; then
+      rm -f "$HOME/.local/bin/shellcheck"
+    fi
+    hash -r
+    if ! command -v shellcheck >/dev/null 2>&1 || ! shellcheck_is_pinned shellcheck; then
+      echo "error: ShellCheck 0.11.0 is not the shellcheck on PATH ($(command -v shellcheck 2>/dev/null || echo missing))" >&2
+      exit 1
+    fi
   else
     echo "warning: pinned ShellCheck 0.11.0 checksum is for x86_64 only; skipping on $(uname -m)" >&2
   fi
