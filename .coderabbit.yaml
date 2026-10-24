@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# Draft CodeRabbit config for rmems/Ship-of-Theseus-Workstation (generated locally, not pushed).
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  fail_commit_status: false
+  auto_review:
+    enabled: true
+    drafts: false
+  path_instructions:
+  - path: scripts/**/*.sh
+    instructions: Shell scripts. Must pass shellcheck; quote expansions and never echo secrets or tokens. CI runs shellcheck 0.11.0 on `scripts/*.sh`; scripts touch the local workstation, so flag anything destructive (rm, dd, package removal) that is not behind an explicit confirmation or dry-run flag.
+  - path: schemas/**
+    instructions: JSON Schema for the system report; keep it in step with `tests/fixtures/` and the report script.
+  - path: .github/workflows/**
+    instructions: GitHub Actions workflows. Keep `permissions:` least-privilege and job commands in sync with the local gates documented in the repo. Every `uses:` is pinned to a full commit SHA today; new or bumped actions must be too.
+  tools:
+    shellcheck:
+      enabled: true
+    ruff:
+      enabled: true
+    actionlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    markdownlint:
+      enabled: true
