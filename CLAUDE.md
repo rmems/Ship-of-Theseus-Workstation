@@ -11,13 +11,14 @@ Run from the repo root. "Verified" means it ran successfully in a fresh checkout
 
 | Command | Status |
 |---|---|
-| `python3 -m pip install -r requirements.txt` (`jsonschema[format]>=4.23,<5`) | not run (`jsonschema` was already installed; CI runs it) |
+| `python3 -m pip install -r requirements.txt` (`jsonschema[format]>=4.23,<5`) | verified (into a fresh venv; resolved `jsonschema` 4.26.0) |
 | `python3 -m unittest -v tests/test_theseus_report.py` | verified (17 tests) |
 | `scripts/theseus-report --help` | verified |
 | `python3 -m unittest -v tests/test_theseus_provenance.py tests/test_theseus_provenance_policy.py tests/test_theseus_provenance_schema.py` | verified (47 tests) |
 | `scripts/theseus-provenance --help` | verified |
 | `shellcheck scripts/*.sh` | verified (ShellCheck 0.11.0, exit 0) |
-| `scripts/theseus-report collect`, `validate`; `scripts/theseus-provenance collect`, `validate` | not run (`collect` reads the live host and writes under `benchmarks/`; `validate` needs a collected file) |
+| `scripts/theseus-report collect`; `scripts/theseus-provenance collect` | not run (reads the live host and writes under `benchmarks/`) |
+| `scripts/theseus-report validate <report>`; `scripts/theseus-provenance validate <manifest>` | not run (read an existing collected file and do not probe the host; no collected file is committed, and the validation logic is covered by the unittest rows above) |
 | `scripts/verify-node-environment.sh` | not run (checks host-specific Fedora, `nvidia-smi` and `nvcc` prerequisites) |
 | `scripts/collect-node-inventory.sh` | not run (probes the host and writes to `benchmarks/`; `lshw` and NVIDIA queries are optional) |
 | `scripts/benchmark-node.sh` | not run (probes the host, including `nvidia-smi` and a 1 GiB temporary-file write test; writes to `benchmarks/`) |
