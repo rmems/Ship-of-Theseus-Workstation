@@ -1,0 +1,935 @@
+#!/usr/bin/env python3
+"""Collect and validate a Ship of Theseus experiment provenance manifest (#8).
+
+The manifest is a compact, privacy-minimal environment record attached to a
+telemetry capture, benchmark, or experiment run. Every probed value is stored
+as a field object ``{"source", "status", "value"}``; a value that cannot be read
+is stored as ``{"source", "status": "unavailable", "reason"}``. Nothing is
+silently omitted and nothing is guessed.
+
+Privacy contract (see docs/provenance-manifest.md for the per-field table):
+hostnames, usernames, serial numbers, UUIDs, MAC/IP addresses, home-directory
+or other local paths, git remote URLs, and raw command output are never
+persisted. The host is represented only by a keyed hash of /etc/machine-id.
+"""
+
+from __future__ import annotations
+
+import argparse
+import getpass
+import hashlib
+import hmac
+import ipaddress
+import json
+import os
+import platform
+import re
+import secrets
+import socket
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, Callable
+
+from jsonschema import Draft202012Validator, FormatChecker
+
+
+SCHEMA_VERSION = "1.0.0"
+REDACTION_POLICY_VERSION = "1.0.0"
+COLLECTOR_NAME = "theseus-provenance"
+COLLECTOR_VERSION = "1.0.0"
+COMMAND_TIMEOUT_SECONDS = 30
+FRAMEWORK_TIMEOUT_SECONDS = 120
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCHEMA_PATH = REPO_ROOT / "schemas" / "provenance-manifest.schema.json"
+DEFAULT_OUTPUT_ROOT = Path("benchmarks")
+HOST_FINGERPRINT_KEY = b"ship-of-theseus-provenance/v1"
+HOST_FINGERPRINT_METHOD = "hmac-sha256(/etc/machine-id, key=ship-of-theseus-provenance/v1)"
+# The only place the fixed method string may appear unscanned.
+FINGERPRINT_METHOD_LOCATION = "$.redaction.host_fingerprint_method"
+HOST_ROLES = ("interactive", "telemetry-capture", "benchmark", "training", "ci-runner", "other")
+RUN_KINDS = ("telemetry", "benchmark", "verification", "experiment", "training", "other")
+ARTIFACT_KINDS = ("telemetry", "benchmark", "verification", "dataset", "model", "other")
+NOT_SUPPORTED_MARKERS = {"[n/a]", "n/a", "[not supported]", "not supported", "[unknown error]", ""}
+
+NVIDIA_QUERY_FIELDS = (
+    ("index", "index"),
+    ("name", "name"),
+    ("driver_version", "driver_version"),
+    ("vbios_version", "vbios_version"),
+    ("compute_capability", "compute_cap"),
+    ("memory_total_mib", "memory.total"),
+    ("power_limit_w", "power.limit"),
+    ("power_default_limit_w", "power.default_limit"),
+    ("power_enforced_limit_w", "enforced.power.limit"),
+    ("power_max_limit_w", "power.max_limit"),
+    ("clocks_max_graphics_mhz", "clocks.max.graphics"),
+    ("clocks_max_memory_mhz", "clocks.max.memory"),
+    ("persistence_mode", "persistence_mode"),
+    ("pcie_link_gen_max", "pcie.link.gen.max"),
+    ("pcie_link_width_max", "pcie.link.width.max"),
+)
+NVIDIA_NUMERIC_FIELDS = {
+    "memory_total_mib", "power_limit_w", "power_default_limit_w", "power_enforced_limit_w", "power_max_limit_w",
+    "clocks_max_graphics_mhz", "clocks_max_memory_mhz", "pcie_link_gen_max", "pcie_link_width_max",
+}
+
+# Keys that must never appear anywhere in a manifest, at any depth.
+FORBIDDEN_KEY = re.compile(
+    r"(hostname|username|user_name|serial|uuid|mac_address|ip_address|ipv4|ipv6|mountpoint|path|home|"
+    r"email|token|secret|password|credential|remote_url|bus_id|pci_bus)",
+    re.IGNORECASE,
+)
+# Value shapes that indicate leaked host identifiers or local paths.
+# A path may start anywhere not preceded by a path-name character, so paths inside
+# lists ("a.csv,/home/x"), brackets or pipes are caught, while "owner/repo",
+# "a/b" and dates like "08/15/2026" are not.
+_PATH_START = r"(?<![A-Za-z0-9._~-])"
+FORBIDDEN_VALUE_PATTERNS = (
+    ("home_or_root_path", re.compile(_PATH_START + r"(~/|/home/|/root(/|$)|/Users/|/var/home/|[A-Za-z]:\\\\Users\\\\)")),
+    # Any absolute POSIX path with at least one directory, or a drive-letter path.
+    ("absolute_path", re.compile(_PATH_START + r"(/[A-Za-z0-9._~-]+/|[A-Za-z]:[\\/])")),
+    ("ipv4_address", re.compile(r"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?![\d.])")),
+    ("ipv6_address", re.compile(r"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{1,4}:){4,7}[0-9A-Fa-f]{1,4}(?![0-9A-Fa-f:])")),
+    ("mac_address", re.compile(r"(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f])")),
+    ("uuid", re.compile(r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}")),
+    ("email_address", re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")),
+    ("url_with_credentials", re.compile(r"[a-z][a-z0-9+.-]*://[^/\s]*@", re.IGNORECASE)),
+    # Any URL: remotes (including plain https git remotes) and hosts are never stored.
+    ("url", re.compile(r"\b[a-z][a-z0-9+.-]*://\S", re.IGNORECASE)),
+    # Relative paths that walk the local tree ("../private/x", "./data/x").
+    ("relative_path", re.compile(_PATH_START + r"\.{1,2}[/\\]")),
+)
+# Candidates for compressed IPv6 ("2001:db8::1", "fe80::1"); confirmed with ipaddress so
+# Rust-style paths such as "std::fmt" do not match.
+IPV6_COMPRESSED_CANDIDATE = re.compile(r"(?<![\w:.])[0-9A-Fa-f:]*::[0-9A-Fa-f:.%\w]*(?![\w:])")
+# Generic words that would make host-identity matching useless if a host happened to use them.
+SCHEMA_CONSTANT_LOCATIONS = frozenset({"$.node.label", "$.collector.name", "$.redaction.host_fingerprint_method"})
+# Keys whose values the schema restricts to a fixed enum/const ($defs source, reason, status).
+SCHEMA_ENUM_KEYS = frozenset({"source", "status", "reason"})
+# os-release ID is a distro identifier shipped by the OS (e.g. "ubuntu", "debian"), not host-set.
+OS_ID_LOCATION = "$.environment.os.id.value"
+# Vendor-supplied model strings (GPU name, CPU model, firmware/board vendor), e.g.
+# "NVIDIA GeForce RTX 5080"; they come from the hardware, not from host configuration.
+VENDOR_STRING_LOCATION = re.compile(
+    r"\$\.environment\.(gpu\.devices\.value\[\d+\]\.name"
+    r"|cpu\.model"
+    r"|firmware\.(bios_vendor|board_vendor|board_name))\.value"
+)
+SYSTEM_REPORT_ID_LOCATION = "$.links.system_report.report_id"
+SYSTEM_REPORT_ID_PREFIX = "ship-of-theseus-"
+REPO_NAME_LOCATION = re.compile(r"\$\.repositories\[\d+\]\.name")
+IDENTITY_TERM_ALLOWLIST = {"localhost", "root", "runner", "fedora", "ship-of-theseus", "user", "admin"}
+SCP_LIKE_GIT_REMOTE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:")
+
+
+class ProvenanceError(RuntimeError):
+    """Raised when collection or validation must fail loudly."""
+
+
+class SchemaVersionMismatch(ProvenanceError):
+    """Raised when a manifest declares a schema version this validator does not implement."""
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+# Variables that would make git ignore `-C <dir>` and read some other repository.
+GIT_LOCATION_ENV = frozenset({
+    "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_NAMESPACE", "GIT_PREFIX",
+    "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+})
+
+
+class CommandRunner:
+    def run(self, *args: str, timeout: int = COMMAND_TIMEOUT_SECONDS, cwd: Path | None = None) -> CommandResult:
+        env = {key: value for key, value in os.environ.items() if key not in GIT_LOCATION_ENV}
+        env.update({"LC_ALL": "C", "LANG": "C", "GIT_TERMINAL_PROMPT": "0"})
+        completed = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=timeout, env=env, cwd=cwd
+        )
+        return CommandResult(completed.returncode, completed.stdout, completed.stderr)
+
+
+# --------------------------------------------------------------------------- field helpers
+
+
+def available(source: str, value: Any) -> dict[str, Any]:
+    return {"source": source, "status": "available", "value": value}
+
+
+def unavailable(source: str, reason: str, status: str = "unavailable") -> dict[str, Any]:
+    return {"source": source, "status": status, "reason": reason}
+
+
+def is_available(entry: Any) -> bool:
+    return isinstance(entry, dict) and entry.get("status") == "available"
+
+
+@dataclass
+class Probe:
+    """Bundles the host interfaces so tests can substitute a fixture root and fake commands."""
+
+    runner: CommandRunner = field(default_factory=CommandRunner)
+    sysroot: Path = Path("/")
+    machine: Callable[[], str] = platform.machine
+
+    def path(self, absolute: str) -> Path:
+        return self.sysroot / absolute.lstrip("/")
+
+    def read(self, absolute: str) -> tuple[str | None, str | None]:
+        try:
+            return self.path(absolute).read_text(encoding="utf-8", errors="replace"), None
+        except PermissionError:
+            return None, "permission_denied"
+        except OSError:
+            return None, "source_unavailable"
+
+    def command(self, *args: str, timeout: int = COMMAND_TIMEOUT_SECONDS, cwd: Path | None = None) -> tuple[CommandResult | None, str | None]:
+        try:
+            result = self.runner.run(*args, timeout=timeout, cwd=cwd)
+        except FileNotFoundError:
+            return None, "command_not_found"
+        except PermissionError:
+            return None, "permission_denied"
+        except subprocess.TimeoutExpired:
+            return None, "command_timeout"
+        except OSError:
+            return None, "command_failed"
+        if result.returncode != 0:
+            return None, "command_failed"
+        return result, None
+
+
+def clean_token(value: str) -> str | None:
+    value = " ".join(value.strip().split())
+    if value.lower() in NOT_SUPPORTED_MARKERS:
+        return None
+    return value[:256]
+
+
+def read_field(probe: Probe, source: str, absolute: str) -> dict[str, Any]:
+    text, reason = probe.read(absolute)
+    if text is None:
+        return unavailable(source, reason or "source_unavailable")
+    value = clean_token(text)
+    if value is None:
+        return unavailable(source, "unparseable_output")
+    return available(source, value)
+
+
+def version_from_command(probe: Probe, source: str, args: tuple[str, ...], pattern: str) -> dict[str, Any]:
+    result, reason = probe.command(*args)
+    if result is None:
+        return unavailable(source, reason or "command_failed")
+    match = re.search(pattern, result.stdout + "\n" + result.stderr)
+    if not match:
+        return unavailable(source, "unparseable_output")
+    return available(source, match.group(1))
+
+
+# --------------------------------------------------------------------------- probes
+
+
+def probe_os(probe: Probe) -> dict[str, Any]:
+    text, reason = probe.read("/etc/os-release")
+    if text is None:
+        return {"id": unavailable("os_release", reason or "source_unavailable"),
+                "version_id": unavailable("os_release", reason or "source_unavailable")}
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        if "=" in line and not line.lstrip().startswith("#"):
+            key, raw = line.split("=", 1)
+            if key in {"ID", "VERSION_ID"}:
+                values[key] = raw.strip().strip('"').strip("'")
+    result = {}
+    for key, name in (("ID", "id"), ("VERSION_ID", "version_id")):
+        value = clean_token(values.get(key, ""))
+        result[name] = available("os_release", value) if value else unavailable("os_release", "unparseable_output")
+    return result
+
+
+def probe_kernel(probe: Probe) -> dict[str, Any]:
+    return read_field(probe, "platform", "/proc/sys/kernel/osrelease")
+
+
+def probe_architecture(probe: Probe) -> dict[str, Any]:
+    try:
+        value = clean_token(probe.machine() or "")
+    except OSError:
+        value = None
+    return available("platform", value) if value else unavailable("platform", "source_unavailable")
+
+
+def probe_firmware(probe: Probe) -> dict[str, Any]:
+    # Only the five world-readable descriptive DMI attributes are read. product_serial,
+    # board_serial, chassis_serial, product_uuid and board_asset_tag are never opened.
+    return {
+        name: read_field(probe, "dmi", f"/sys/class/dmi/id/{name}")
+        for name in ("bios_vendor", "bios_version", "bios_date", "board_vendor", "board_name")
+    }
+
+
+def probe_cpu(probe: Probe) -> dict[str, Any]:
+    text, reason = probe.read("/proc/cpuinfo")
+    if text is None:
+        model = unavailable("cpuinfo", reason or "source_unavailable")
+    else:
+        match = re.search(r"^model name\s*:\s*(.+)$", text, re.MULTILINE)
+        value = clean_token(match.group(1)) if match else None
+        model = available("cpuinfo", value) if value else unavailable("cpuinfo", "unparseable_output")
+
+    def per_cpu_set(attribute: str) -> dict[str, Any]:
+        base = probe.path("/sys/devices/system/cpu")
+        try:
+            files = sorted(base.glob(f"cpu[0-9]*/cpufreq/{attribute}"))
+        except OSError:
+            files = []
+        if not files:
+            return unavailable("cpufreq", "source_unavailable")
+        seen: list[str] = []
+        for item in files:
+            try:
+                value = clean_token(item.read_text(encoding="utf-8", errors="replace"))
+            except PermissionError:
+                return unavailable("cpufreq", "permission_denied")
+            except OSError:
+                return unavailable("cpufreq", "source_unavailable")
+            if value is None:
+                return unavailable("cpufreq", "unparseable_output")
+            if value not in seen:
+                seen.append(value)
+        return available("cpufreq", sorted(seen))
+
+    pstate = read_field(probe, "amd_pstate", "/sys/devices/system/cpu/amd_pstate/status")
+
+    boost = unavailable("cpufreq", "source_unavailable")
+    for candidate in ("/sys/devices/system/cpu/cpufreq/boost", "/sys/devices/system/cpu/cpufreq/policy0/boost"):
+        text, reason = probe.read(candidate)
+        if text is None:
+            if reason == "permission_denied":
+                boost = unavailable("cpufreq", reason)
+            continue
+        token = text.strip()
+        boost = available("cpufreq", token == "1") if token in {"0", "1"} else unavailable("cpufreq", "unparseable_output")
+        break
+
+    return {
+        "model": model,
+        "scaling_governors": per_cpu_set("scaling_governor"),
+        "energy_performance_preferences": per_cpu_set("energy_performance_preference"),
+        "amd_pstate_mode": pstate,
+        "boost_enabled": boost,
+    }
+
+
+def parse_number(token: str) -> float | int | None:
+    token = token.strip()
+    if clean_token(token) is None:
+        return None
+    token = re.sub(r"\s*(MiB|W|MHz)$", "", token)
+    try:
+        number = float(token)
+    except ValueError:
+        return None
+    if number != number or number in (float("inf"), float("-inf")) or number < 0:
+        return None
+    return int(number) if number.is_integer() else number
+
+
+def parse_nvidia_query(contents: str) -> list[dict[str, Any]]:
+    devices: list[dict[str, Any]] = []
+    for row in contents.splitlines():
+        if not row.strip():
+            continue
+        values = [value.strip() for value in row.split(",")]
+        if len(values) != len(NVIDIA_QUERY_FIELDS):
+            raise ProvenanceError("nvidia-smi returned an unexpected column count")
+        device: dict[str, Any] = {}
+        for (name, _query), raw in zip(NVIDIA_QUERY_FIELDS, values, strict=True):
+            if name == "index":
+                if not raw.isdigit():
+                    raise ProvenanceError("nvidia-smi returned a non-integer GPU index")
+                device["index"] = int(raw)
+                continue
+            if name in NVIDIA_NUMERIC_FIELDS:
+                number = parse_number(raw)
+                if number is None:
+                    reason = "not_supported_by_device" if clean_token(raw) is None else "unparseable_output"
+                    device[name] = unavailable("nvidia_smi", reason)
+                else:
+                    device[name] = available("nvidia_smi", number)
+            else:
+                value = clean_token(raw)
+                device[name] = available("nvidia_smi", value) if value else unavailable("nvidia_smi", "not_supported_by_device")
+        devices.append(device)
+    if not devices:
+        raise ProvenanceError("nvidia-smi returned no GPU rows")
+    return devices
+
+
+def probe_gpu(probe: Probe) -> tuple[dict[str, Any], dict[str, Any]]:
+    # Kernel module version: /proc/driver/nvidia/version also contains the NVIDIA
+    # build host and builder username; only the dotted version number is extracted.
+    text, reason = probe.read("/proc/driver/nvidia/version")
+    if text is None:
+        module = unavailable("proc_driver_nvidia", reason or "source_unavailable")
+    else:
+        match = re.search(r"Kernel Module(?: for [A-Za-z0-9_]+)?\s+([0-9]+(?:\.[0-9]+){1,3})\b", text)
+        module = available("proc_driver_nvidia", match.group(1)) if match else unavailable("proc_driver_nvidia", "unparseable_output")
+
+    # GPU UUID, serial, pci.bus_id and board ids are deliberately not in the query.
+    query = ",".join(name for _key, name in NVIDIA_QUERY_FIELDS)
+    result, reason = probe.command("nvidia-smi", f"--query-gpu={query}", "--format=csv,noheader,nounits")
+    if result is None:
+        devices = unavailable("nvidia_smi", reason or "command_failed")
+    else:
+        try:
+            devices = available("nvidia_smi", parse_nvidia_query(result.stdout))
+        except ProvenanceError:
+            devices = unavailable("nvidia_smi", "unparseable_output")
+
+    # The plain nvidia-smi banner is the only stable place the driver's supported CUDA
+    # version is printed. Only the version is extracted; process names/paths, bus ids
+    # and the rest of the banner are discarded and never stored.
+    banner, reason = probe.command("nvidia-smi")
+    if banner is None:
+        driver_cuda = unavailable("nvidia_smi", reason or "command_failed")
+    else:
+        match = re.search(r"CUDA Version:\s*([0-9]+\.[0-9]+)", banner.stdout)
+        driver_cuda = available("nvidia_smi", match.group(1)) if match else unavailable("nvidia_smi", "unparseable_output")
+
+    toolkit = version_from_command(probe, "nvcc", ("nvcc", "--version"), r"\brelease\s+([0-9]+(?:\.[0-9]+)+)")
+    return (
+        {"kernel_module_version": module, "devices": devices},
+        {"driver_cuda_version": driver_cuda, "toolkit_version": toolkit},
+    )
+
+
+def probe_toolchains(probe: Probe, python: str) -> dict[str, Any]:
+    return {
+        "python": version_from_command(probe, "python", (python, "--version"), r"Python\s+([0-9]+\.[0-9]+\.[0-9]+\S*)"),
+        "rustc": version_from_command(probe, "rustc", ("rustc", "--version"), r"rustc\s+([0-9]+\.[0-9]+\.[0-9]+\S*)"),
+        "cargo": version_from_command(probe, "cargo", ("cargo", "--version"), r"cargo\s+([0-9]+\.[0-9]+\.[0-9]+\S*)"),
+        "gcc": version_from_command(probe, "gcc", ("gcc", "-dumpfullversion"), r"^\s*([0-9]+(?:\.[0-9]+){0,2})\s*$"),
+        "julia": version_from_command(probe, "julia", ("julia", "--version"), r"julia version\s+([0-9]+\.[0-9]+\.[0-9]+\S*)"),
+    }
+
+
+# Run with the workload's own interpreter environment (user site-packages, PYTHONPATH),
+# so the manifest sees the torch the run imports; only the current directory is dropped
+# from sys.path so a stray local torch.py cannot shadow the real package. Not "-I":
+# that hides user-site and PYTHONPATH installs. Not "-P": that needs Python >= 3.11.
+TORCH_PROBE = (
+    "import sys\n"
+    "sys.path[:] = [p for p in sys.path if p not in ('', '.')]\n"
+    "import json\n"
+    "try:\n"
+    "    import torch\n"
+    "except ImportError:\n"
+    "    print(json.dumps({'installed': False}))\n"
+    "else:\n"
+    "    cudnn = torch.backends.cudnn.version() if torch.backends.cudnn.is_available() else None\n"
+    "    print(json.dumps({'installed': True, 'version': torch.__version__,"
+    " 'cuda': torch.version.cuda, 'cudnn': cudnn}))\n"
+)
+
+
+def probe_frameworks(probe: Probe, python: str) -> dict[str, Any]:
+    result, reason = probe.command(python, "-c", TORCH_PROBE, timeout=FRAMEWORK_TIMEOUT_SECONDS)
+    if result is None:
+        failed = unavailable("pytorch", reason or "command_failed")
+        return {"pytorch": failed, "pytorch_cuda_build": failed, "pytorch_cudnn": failed}
+    try:
+        data = json.loads(result.stdout.strip().splitlines()[-1])
+    except (json.JSONDecodeError, IndexError):
+        data = None
+    if not isinstance(data, dict):
+        failed = unavailable("pytorch", "unparseable_output")
+        return {"pytorch": failed, "pytorch_cuda_build": failed, "pytorch_cudnn": failed}
+    if not data.get("installed"):
+        missing = unavailable("pytorch", "module_not_installed")
+        return {"pytorch": missing, "pytorch_cuda_build": missing, "pytorch_cudnn": missing}
+
+    def text(value: Any, missing_reason: str) -> dict[str, Any]:
+        token = clean_token(str(value)) if value is not None else None
+        return available("pytorch", token) if token else unavailable("pytorch", missing_reason)
+
+    return {
+        "pytorch": text(data.get("version"), "unparseable_output"),
+        "pytorch_cuda_build": text(data.get("cuda"), "cpu_only_build"),
+        # A CUDA build without a usable cuDNN is not a CPU-only build.
+        "pytorch_cudnn": text(data.get("cudnn"), "source_unavailable" if data.get("cuda") else "cpu_only_build"),
+    }
+
+
+def host_fingerprint(probe: Probe, opt_out: bool) -> dict[str, Any]:
+    if opt_out:
+        return unavailable("machine_id", "operator_opt_out", status="omitted")
+    text, reason = probe.read("/etc/machine-id")
+    if text is None:
+        return unavailable("machine_id", reason or "source_unavailable")
+    machine_id = text.strip()
+    if not re.fullmatch(r"[0-9a-f]{32}", machine_id):
+        return unavailable("machine_id", "unparseable_output")
+    digest = hmac.new(HOST_FINGERPRINT_KEY, machine_id.encode("ascii"), hashlib.sha256).hexdigest()
+    return available("machine_id", f"hmac-sha256:{digest}")
+
+
+def git_commit(probe: Probe, repo: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    # git walks up to any enclosing checkout; a directory that is not the
+    # checkout root would otherwise record the *enclosing* repo's commit.
+    prefix, reason = probe.command("git", "-C", str(repo), "rev-parse", "--show-prefix")
+    if prefix is None or prefix.stdout.strip():
+        probe_reason = "not_a_git_repository" if prefix is not None or reason == "command_failed" else reason
+        failed = unavailable("git", probe_reason or "command_failed")
+        return failed, failed
+    head, reason = probe.command("git", "-C", str(repo), "rev-parse", "--verify", "HEAD")
+    if head is None:
+        probe_reason = "not_a_git_repository" if reason == "command_failed" else (reason or "command_failed")
+        failed = unavailable("git", probe_reason)
+        return failed, failed
+    sha = head.stdout.strip()
+    if not re.fullmatch(r"[0-9a-f]{40}([0-9a-f]{24})?", sha):
+        failed = unavailable("git", "unparseable_output")
+        return failed, failed
+    status, reason = probe.command("git", "-C", str(repo), "status", "--porcelain", "--untracked-files=no")
+    dirty = unavailable("git", reason or "command_failed") if status is None else available("git", bool(status.stdout.strip()))
+    return available("git", sha), dirty
+
+
+# --------------------------------------------------------------------------- operator inputs
+
+
+def split_pair(value: str, flag: str) -> tuple[str, str]:
+    if "=" not in value:
+        raise ProvenanceError(f"{flag} expects KEY=VALUE, got {value!r}")
+    key, rest = value.split("=", 1)
+    if not key or not rest:
+        raise ProvenanceError(f"{flag} expects KEY=VALUE, got {value!r}")
+    return key, rest
+
+
+def sha256_file(path: Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    size = 0
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+            size += len(chunk)
+    return digest.hexdigest(), size
+
+
+def system_report_link(path: str | None) -> dict[str, Any]:
+    if not path:
+        return unavailable("operator", "not_provided")
+    report_path = Path(path)
+    try:
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ProvenanceError(f"--system-report is not a readable JSON report: {error}") from error
+    report_id = data.get("report_id") if isinstance(data, dict) else None
+    if not isinstance(report_id, str) or not re.fullmatch(r"ship-of-theseus-[0-9TZ]+", report_id):
+        raise ProvenanceError("--system-report does not carry a theseus-report report_id")
+    digest, _size = sha256_file(report_path)
+    return {"source": "operator", "status": "available", "report_id": report_id, "sha256": digest}
+
+
+def operator_field(value: str | None) -> dict[str, Any]:
+    token = clean_token(value) if value else None
+    return available("operator", token) if token else unavailable("operator", "not_provided")
+
+
+def new_manifest_id(created_at: str) -> str:
+    stamp = created_at.replace("-", "").replace(":", "")
+    return f"prov-{stamp}-{secrets.token_hex(4)}"
+
+
+def utc_now() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+# --------------------------------------------------------------------------- build
+
+
+@dataclass
+class Options:
+    host_role: str = "interactive"
+    run_id: str | None = None
+    run_kind: str | None = None
+    repos: list[str] = field(default_factory=list)
+    telemetry_contract: str | None = None
+    telemetry_collector: str | None = None
+    system_report: str | None = None
+    artifacts: list[str] = field(default_factory=list)
+    meta: list[str] = field(default_factory=list)
+    python: str = "python3"
+    no_host_fingerprint: bool = False
+    require: list[str] = field(default_factory=list)
+
+
+def build_manifest(options: Options, probe: Probe | None = None, created_at: str | None = None) -> dict[str, Any]:
+    probe = probe or Probe()
+    if options.host_role not in HOST_ROLES:
+        raise ProvenanceError(f"--host-role must be one of {', '.join(HOST_ROLES)}")
+    if options.run_kind is not None and options.run_kind not in RUN_KINDS:
+        raise ProvenanceError(f"--run-kind must be one of {', '.join(RUN_KINDS)}")
+    created_at = created_at or utc_now()
+
+    gpu, cuda = probe_gpu(probe)
+    collector_commit, _collector_dirty = git_commit(probe, REPO_ROOT)
+
+    repositories = []
+    seen_names: set[str] = set()
+    for spec in options.repos:
+        name, location = split_pair(spec, "--repo")
+        if name in seen_names:
+            raise ProvenanceError(f"--repo name given twice: {name}")
+        seen_names.add(name)
+        commit, dirty = git_commit(probe, Path(location).expanduser())
+        repositories.append({"name": name, "commit": commit, "dirty": dirty})
+
+    if options.telemetry_collector:
+        collector_name, collector_version = split_pair(options.telemetry_collector, "--telemetry-collector")
+    else:
+        collector_name = collector_version = None
+
+    artifacts = []
+    for spec in options.artifacts:
+        kind, location = split_pair(spec, "--artifact")
+        if kind not in ARTIFACT_KINDS:
+            raise ProvenanceError(f"--artifact kind must be one of {', '.join(ARTIFACT_KINDS)}")
+        try:
+            digest, size = sha256_file(Path(location).expanduser())
+        except OSError as error:
+            raise ProvenanceError(f"--artifact {kind} could not be hashed: {error.strerror}") from error
+        artifacts.append({"kind": kind, "sha256": digest, "size_bytes": size})
+
+    metadata: dict[str, str] = {}
+    for spec in options.meta:
+        key, value = split_pair(spec, "--meta")
+        metadata[key] = value
+
+    manifest: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "manifest_id": new_manifest_id(created_at),
+        "created_at_utc": created_at,
+        "collector": {"name": COLLECTOR_NAME, "version": COLLECTOR_VERSION, "source_commit": collector_commit},
+        "node": {
+            "label": "ship-of-theseus",
+            "host_role": options.host_role,
+            "host_fingerprint": host_fingerprint(probe, options.no_host_fingerprint),
+        },
+        "environment": {
+            "os": probe_os(probe),
+            "kernel_release": probe_kernel(probe),
+            "architecture": probe_architecture(probe),
+            "firmware": probe_firmware(probe),
+            "cpu": probe_cpu(probe),
+            "gpu": gpu,
+            "cuda": cuda,
+            "toolchains": probe_toolchains(probe, options.python),
+            "frameworks": probe_frameworks(probe, options.python),
+        },
+        "repositories": repositories,
+        "telemetry": {
+            "contract_version": operator_field(options.telemetry_contract),
+            "collector_name": operator_field(collector_name),
+            "collector_version": operator_field(collector_version),
+        },
+        "links": {
+            "run_id": operator_field(options.run_id),
+            "run_kind": operator_field(options.run_kind),
+            "system_report": system_report_link(options.system_report),
+            "artifacts": artifacts,
+        },
+        "workload_metadata": metadata,
+        "redaction": {"policy_version": REDACTION_POLICY_VERSION, "host_fingerprint_method": HOST_FINGERPRINT_METHOD},
+    }
+    validate_manifest(manifest, extra_forbidden=local_identity_terms())
+    enforce_requirements(manifest, options.require)
+    return manifest
+
+
+# --------------------------------------------------------------------------- validation
+
+
+def local_identity_terms() -> list[str]:
+    """Hostname and username of the machine running the tool; they must never appear in a manifest."""
+    terms: list[str] = []
+    for getter in (socket.gethostname, getpass.getuser):
+        try:
+            value = getter()
+        except (OSError, KeyError):
+            continue
+        for part in {value, value.split(".")[0]}:
+            if part and len(part) >= 4 and part.lower() not in IDENTITY_TERM_ALLOWLIST:
+                terms.append(part)
+    return terms
+
+
+def walk(value: Any, location: str = "$") -> list[tuple[str, str | None, Any]]:
+    """Yield (location, key, scalar) for every key and every string value."""
+    items: list[tuple[str, str | None, Any]] = []
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            items.append((f"{location}.{key}", str(key), None))
+            items.extend(walk(nested, f"{location}.{key}"))
+    elif isinstance(value, list):
+        for index, nested in enumerate(value):
+            items.extend(walk(nested, f"{location}[{index}]"))
+    elif isinstance(value, str):
+        items.append((location, None, value))
+    return items
+
+
+def redaction_violations(manifest: Any, extra_forbidden: list[str] | None = None) -> list[str]:
+    violations: list[str] = []
+    extra = [re.compile(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", re.IGNORECASE) for term in extra_forbidden or []]
+    for location, key, value in walk(manifest):
+        if key is not None:
+            if FORBIDDEN_KEY.search(key) and location != FINGERPRINT_METHOD_LOCATION:
+                violations.append(f"{location}: forbidden key")
+            # Operator-chosen metadata keys are free text too; schema keys are fixed.
+            if location.startswith("$.workload_metadata.") and any(pattern.search(key) for pattern in extra):
+                violations.append(f"{location}: key contains a local host identity term")
+            continue
+        if value is None:
+            continue
+        # Exempt only the schema constant at its own location: the same key under
+        # workload_metadata, or any other value there, is scanned as usual.
+        if location == FINGERPRINT_METHOD_LOCATION and value == HOST_FINGERPRINT_METHOD:
+            continue
+        for label, pattern in FORBIDDEN_VALUE_PATTERNS:
+            if pattern.search(value):
+                violations.append(f"{location}: value looks like {label}")
+        if SCP_LIKE_GIT_REMOTE.search(value):
+            violations.append(f"{location}: value looks like a git remote")
+        if contains_compressed_ipv6(value):
+            violations.append(f"{location}: value looks like ipv6_address")
+        scope = identity_scope(location, value)
+        if any(pattern.search(scope) for pattern in extra):
+            violations.append(f"{location}: value contains a local host identity term")
+    return violations
+
+
+def contains_compressed_ipv6(value: str) -> bool:
+    for candidate in IPV6_COMPRESSED_CANDIDATE.findall(value):
+        if not any(char.isdigit() or char.lower() in "abcdef" for char in candidate.replace("::", "")):
+            continue  # bare "::" carries no address
+        try:
+            ipaddress.IPv6Address(candidate.split("%", 1)[0])
+        except ValueError:
+            continue
+        return True
+    return False
+
+
+def identity_scope(location: str, value: str) -> str:
+    """The part of a value that could carry host identity, for the identity-term scan.
+
+    Schema-fixed text is excluded so a host named e.g. "theseus" or a login equal to a
+    public GitHub owner does not block every collect; the schema still pins that text.
+    """
+    if location.startswith("$.workload_metadata."):
+        # Operator text: keys like "source" or "reason" here are free strings, not enums.
+        return value
+    if location in SCHEMA_CONSTANT_LOCATIONS or location == OS_ID_LOCATION:
+        return ""
+    if VENDOR_STRING_LOCATION.fullmatch(location):
+        return ""
+    if location.rsplit(".", 1)[-1] in SCHEMA_ENUM_KEYS:
+        return ""
+    if location == SYSTEM_REPORT_ID_LOCATION:
+        # Schema pattern ^ship-of-theseus-[0-9TZ]+$: only the timestamp varies.
+        return value.removeprefix(SYSTEM_REPORT_ID_PREFIX)
+    if REPO_NAME_LOCATION.fullmatch(location) and "/" in value:
+        # "owner/repo": the owner is a public handle; the pattern rules out paths and URLs.
+        return value.split("/", 1)[1]
+    return value
+
+
+def load_schema() -> dict[str, Any]:
+    try:
+        return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ProvenanceError(f"provenance schema could not be loaded: {error}") from error
+
+
+def validate_manifest(manifest: Any, extra_forbidden: list[str] | None = None) -> None:
+    if not isinstance(manifest, dict):
+        raise ProvenanceError("manifest must be a JSON object")
+    declared = manifest.get("schema_version")
+    if declared != SCHEMA_VERSION:
+        raise SchemaVersionMismatch(
+            f"unsupported manifest schema_version {declared!r}; this validator implements {SCHEMA_VERSION!r}"
+        )
+    schema = load_schema()
+    if schema.get("properties", {}).get("schema_version", {}).get("const") != SCHEMA_VERSION:
+        raise SchemaVersionMismatch("schema file and validator disagree on schema_version")
+    policy = manifest.get("redaction", {}).get("policy_version") if isinstance(manifest.get("redaction"), dict) else None
+    if policy != REDACTION_POLICY_VERSION:
+        raise SchemaVersionMismatch(
+            f"unsupported redaction policy_version {policy!r}; this validator implements {REDACTION_POLICY_VERSION!r}"
+        )
+    violations = redaction_violations(manifest, extra_forbidden)
+    if violations:
+        raise ProvenanceError("redaction violation(s): " + "; ".join(violations))
+    errors = sorted(
+        Draft202012Validator(schema, format_checker=FormatChecker()).iter_errors(manifest),
+        key=lambda error: list(error.absolute_path),
+    )
+    if errors:
+        first = errors[0]
+        where = "$" + "".join(f"[{part}]" if isinstance(part, int) else f".{part}" for part in first.absolute_path)
+        raise ProvenanceError(f"manifest does not satisfy the provenance schema at {where}: {first.message}")
+
+
+class _Unavailable(Exception):
+    def __init__(self, entry: dict[str, Any]):
+        super().__init__(entry.get("reason"))
+        self.entry = entry
+
+
+def resolve(manifest: dict[str, Any], dotted: str) -> Any:
+    node: Any = manifest
+    for part in dotted.split("."):
+        if isinstance(node, dict) and "status" in node and "source" in node and part not in node:
+            if not is_available(node):
+                raise _Unavailable(node)
+            node = node["value"]
+        if isinstance(node, list) and part.isdigit() and int(part) < len(node):
+            node = node[int(part)]
+        elif isinstance(node, dict) and part in node:
+            node = node[part]
+        else:
+            raise ProvenanceError(f"--require names an unknown field: {dotted}")
+    return node
+
+
+def enforce_requirements(manifest: dict[str, Any], required: list[str]) -> None:
+    missing = []
+    for dotted in required:
+        try:
+            entry = resolve(manifest, dotted)
+        except _Unavailable as unavailable_parent:
+            missing.append(f"{dotted} ({unavailable_parent.entry.get('reason')})")
+            continue
+        if isinstance(entry, dict) and "status" in entry and not is_available(entry):
+            missing.append(f"{dotted} ({entry.get('reason')})")
+    if missing:
+        raise ProvenanceError("required field(s) unavailable: " + ", ".join(missing))
+
+
+# --------------------------------------------------------------------------- CLI
+
+
+def write_new_file(destination: Path, contents: str) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=destination.parent, delete=False) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(contents)
+        # os.link fails if the destination exists, so an existing manifest is never replaced.
+        os.link(temporary_path, destination)
+    except FileExistsError as error:
+        raise ProvenanceError(f"refusing to overwrite existing manifest: {destination}") from error
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def collect_command(args: argparse.Namespace) -> int:
+    options = Options(
+        host_role=args.host_role,
+        run_id=args.run_id,
+        run_kind=args.run_kind,
+        repos=args.repo,
+        telemetry_contract=args.telemetry_contract,
+        telemetry_collector=args.telemetry_collector,
+        system_report=args.system_report,
+        artifacts=args.artifact,
+        meta=args.meta,
+        python=args.python,
+        no_host_fingerprint=args.no_host_fingerprint,
+        require=args.require,
+    )
+    manifest = build_manifest(options)
+    contents = json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n"
+    if args.output == "-":
+        sys.stdout.write(contents)
+        return 0
+    destination = Path(args.output) if args.output else DEFAULT_OUTPUT_ROOT / f"{manifest['manifest_id']}.json"
+    write_new_file(destination, contents)
+    print(destination)
+    return 0
+
+
+def reject_nonstandard_constant(token: str) -> float:
+    raise ValueError(f"manifest is not standard JSON: unexpected numeric constant {token!r}")
+
+
+def validate_command(args: argparse.Namespace) -> int:
+    manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"), parse_constant=reject_nonstandard_constant)
+    validate_manifest(manifest, extra_forbidden=args.forbid)
+    enforce_requirements(manifest, args.require)
+    print(f"valid: {args.manifest}")
+    return 0
+
+
+def parser() -> argparse.ArgumentParser:
+    cli = argparse.ArgumentParser(description="Collect or validate a Ship of Theseus provenance manifest.")
+    commands = cli.add_subparsers(dest="command", required=True)
+
+    collect = commands.add_parser("collect", help="probe this host and write a provenance manifest")
+    collect.add_argument("--output", help="new manifest file, or '-' for stdout (default: benchmarks/<manifest_id>.json)")
+    collect.add_argument("--host-role", choices=HOST_ROLES, default="interactive")
+    collect.add_argument("--run-id", help="ID of the telemetry/benchmark/experiment run this manifest describes")
+    collect.add_argument("--run-kind", choices=RUN_KINDS)
+    collect.add_argument("--repo", action="append", default=[], metavar="NAME=DIR",
+                         help="workload repository name (e.g. rmems/vahtisiru) and local checkout; repeatable")
+    collect.add_argument("--telemetry-contract", metavar="VERSION", help="telemetry contract/schema version in force")
+    collect.add_argument("--telemetry-collector", metavar="NAME=VERSION", help="telemetry collector name and version")
+    collect.add_argument("--system-report", metavar="FILE", help="theseus-report system-report.json to link by ID + SHA-256")
+    collect.add_argument("--artifact", action="append", default=[], metavar="KIND=FILE",
+                         help="run artifact to link by SHA-256 and size; the file path is not stored; repeatable")
+    collect.add_argument("--meta", action="append", default=[], metavar="KEY=VALUE",
+                         help="workload-specific metadata (redaction-scanned); repeatable")
+    collect.add_argument("--python", default="python3", help="interpreter whose Python/PyTorch versions are recorded")
+    collect.add_argument("--no-host-fingerprint", action="store_true", help="record host_fingerprint as omitted")
+    collect.add_argument("--require", action="append", default=[], metavar="FIELD",
+                         help="dotted field that must be available or collection fails, e.g. environment.gpu.devices")
+    collect.set_defaults(handler=collect_command)
+
+    validate = commands.add_parser("validate", help="validate a provenance manifest")
+    validate.add_argument("manifest")
+    validate.add_argument("--forbid", action="append", default=[], metavar="TERM",
+                          help="additional identity term that must not appear in any value; repeatable")
+    validate.add_argument("--require", action="append", default=[], metavar="FIELD")
+    validate.set_defaults(handler=validate_command)
+    return cli
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        args = parser().parse_args(argv)
+        return args.handler(args)
+    except SchemaVersionMismatch as error:
+        print(f"theseus-provenance: schema version mismatch: {error}", file=sys.stderr)
+        return 3
+    except (OSError, ValueError, ProvenanceError) as error:
+        print(f"theseus-provenance: {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -123,6 +123,8 @@ The reproducible-node baseline is documented in [`docs/node-baseline.md`](docs/n
 
 The canonical sanitized execution-environment artifact is documented in [`docs/system-report.md`](docs/system-report.md). It uses a versioned schema and intentionally excludes raw inventory and identifying host details.
 
+Every telemetry capture, benchmark, or experiment result should carry a compact provenance manifest from `scripts/theseus-provenance`. The manifest records kernel, driver, CUDA, firmware, CPU policy, toolchain, and commit state, and links to the system report and run artifacts by digest. Its schema, field-by-field redaction decisions, and attachment rules are in [`docs/provenance-manifest.md`](docs/provenance-manifest.md).
+
 The repository should stay narrow: application-specific code belongs in its own project. Ship-of-Theseus-Workstation documents the **platform those projects run on**.
 
 ## ✅ Continuous integration
@@ -164,6 +166,8 @@ The sanitized system-report tool (`scripts/theseus-report`, #13) was architected
 The self-hosted runner health check (`scripts/runner-health.sh`, #7) and its runbook updates were implemented by **Claude Sonnet 5 by Anthropic**.
 
 The infrastructure change-log convention (`docs/change-log.md`, #9) was initialized by **Claude Sonnet 5 by Anthropic**, left empty of entries since no verified historical hardware/environment changes were available to record accurately.
+
+The experiment environment provenance manifest (`scripts/theseus-provenance`, `schemas/provenance-manifest.schema.json`, #8) and its redaction tests were implemented by **Claude Opus 5.5 by Anthropic**.
 
 The portable-CI tier (`.github/workflows/portable-ci.yml`, #12) was added by **Claude Sonnet 5 by Anthropic**; the hardware-gate tier remains deferred until #3/#7 merge, since there's nothing hardware-specific to gate yet.
 
