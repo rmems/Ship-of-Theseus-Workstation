@@ -41,6 +41,27 @@ shellcheck_is_pinned() {
   "$1" --version 2>/dev/null | grep -qx 'version: 0.11.0'
 }
 
+# Create a /usr/local/bin link when that name is absent. Refresh a symlink
+# only when it already points into this checkout's venv or ~/.local/bin.
+link_owned_tool() {
+  local tool="$1" repo="$2" name dest current
+  name="${tool##*/}"
+  dest="/usr/local/bin/${name}"
+  if [ -L "$dest" ]; then
+    current="$(readlink "$dest")"
+    case "$current" in
+      "$repo/.venv/bin/"* | "$HOME/.local/bin/"*)
+        $SUDO ln -sfn "$tool" "$dest"
+        ;;
+    esac
+    return 0
+  fi
+  if [ -e "$dest" ]; then
+    return 0
+  fi
+  $SUDO ln -s "$tool" "$dest"
+}
+
 # Install Debian packages that are not already present.
 apt_install() {
   local missing=() pkg
@@ -132,7 +153,7 @@ for dir in "${tool_dirs[@]}"; do
       python* | pip* | activate* | deactivate | Activate.ps1 | env | env.fish) continue ;;
     esac
     if [ -f "$tool" ] && [ -x "$tool" ]; then
-      $SUDO ln -sfn "$tool" "/usr/local/bin/$name"
+      link_owned_tool "$tool" "$repo_root"
     fi
   done
 done
