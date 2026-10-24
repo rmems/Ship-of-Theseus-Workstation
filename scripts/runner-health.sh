@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# check_* helpers are invoked indirectly via check(); see SC2329.
+# shellcheck disable=SC2329
 set -uo pipefail
 
 out=${1:-benchmarks/runner-health-$(date -u +%Y%m%dT%H%M%SZ)-$$.txt}
