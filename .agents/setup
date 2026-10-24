@@ -1,0 +1,212 @@
+#!/usr/bin/env bash
+# Amp orb setup for Ship-of-Theseus-Workstation.
+#
+# Amp runs this from the repository root when it builds a project orb snapshot
+# (Debian 12, CPU only: orbs have no GPU). It must finish within 20 minutes and
+# be safe to run more than once. See https://ampcode.com/docs/orbs/customizing
+#
+# Installs only what this repo's CI and manifests need:
+#   - apt: curl, ca-certificates
+#   - uv 0.13.5 (pinned installer digest) + Python 3.13 venv with requirements.txt
+#   - ShellCheck 0.11.0 (pinned tarball + sha256, as in portable-ci.yml)
+#   - tool directories exposed to later shells (/etc/profile.d + /usr/local/bin links)
+#
+# It ends with a dependency fetch/prebuild, not a test run.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then
+  SUDO="sudo"
+fi
+
+# Latest stable uv release. The unversioned astral.sh installer is mutable;
+# this digest is the GitHub release asset uv-installer.sh for that tag.
+# The installer checks the uv binary's own sha256 before it installs it.
+UV_VERSION=0.13.5
+UV_INSTALLER_SHA256=1c6e7f025499664633ac2dce43a210800510e9ef0625c52e034a8afdf8bf177a
+
+uv_is_pinned() {
+  local version_line
+  command -v uv >/dev/null 2>&1 || return 1
+  version_line="$(uv --version 2>/dev/null || true)"
+  case "$version_line" in
+    "uv ${UV_VERSION}" | "uv ${UV_VERSION} "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+shellcheck_is_pinned() {
+  "$1" --version 2>/dev/null | grep -qx 'version: 0.11.0'
+}
+
+# Create a /usr/local/bin link when that name is absent. Refresh a symlink
+# only when it already points into this checkout's venv or ~/.local/bin.
+link_owned_tool() {
+  local tool="$1" repo="$2" name dest current
+  name="${tool##*/}"
+  dest="/usr/local/bin/${name}"
+  if [ -L "$dest" ]; then
+    current="$(readlink "$dest")"
+    case "$current" in
+      "$repo/.venv/bin/"* | "$HOME/.local/bin/"*)
+        $SUDO ln -sfn "$tool" "$dest"
+        ;;
+    esac
+    return 0
+  fi
+  if [ -e "$dest" ]; then
+    return 0
+  fi
+  $SUDO ln -s "$tool" "$dest"
+}
+
+# True when dest is the regular file this setup writes, not a symlink.
+python3_wrapper_is_ours() {
+  local dest="$1"
+  [ -f "$dest" ] && [ ! -L "$dest" ] || return 1
+  if grep -qF 'amp-orb-setup python3 wrapper' "$dest"; then
+    return 0
+  fi
+  grep -qF '/.venv/bin/python3' "$dest" && grep -qF 'exec /usr/bin/python3' "$dest"
+}
+
+# Publish the wrapper by renaming a file in the same directory. mv replaces
+# the directory entry and does not follow a symlink at the destination.
+install_python3_wrapper() {
+  local venv_python="$1" stage dest_tmp
+  stage="$(mktemp)"
+  dest_tmp="/usr/local/bin/.amp-orb-python3.$$"
+  trap 'rm -f "$stage"; $SUDO rm -f "$dest_tmp"' EXIT
+  printf '#!/bin/sh\n# amp-orb-setup python3 wrapper\nif [ -x %q ]; then exec %q "$@"; fi\nexec /usr/bin/python3 "$@"\n' \
+    "$venv_python" "$venv_python" >"$stage"
+  chmod 0755 "$stage"
+  $SUDO cp "$stage" "$dest_tmp"
+  $SUDO chmod 0755 "$dest_tmp"
+  $SUDO mv -f "$dest_tmp" /usr/local/bin/python3
+  rm -f "$stage"
+  trap - EXIT
+}
+
+# Install Debian packages that are not already present.
+apt_install() {
+  local missing=() pkg
+  for pkg in "$@"; do
+    if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+      missing+=("$pkg")
+    fi
+  done
+  if [ "${#missing[@]}" -gt 0 ]; then
+    $SUDO apt-get -o Acquire::Retries=5 update -qq
+    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=5 install -y --no-install-recommends "${missing[@]}"
+  fi
+}
+
+# --- System packages (curl + CA certs for the installers below) ---
+apt_install curl ca-certificates
+
+# --- Python (uv) ---
+export PATH="$HOME/.local/bin:$PATH"
+if ! uv_is_pinned; then
+  uv_tmp="$(mktemp)"
+  trap 'rm -f "$uv_tmp"' EXIT
+  curl -fsSL --retry 3 -o "$uv_tmp" \
+    "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-installer.sh"
+  echo "${UV_INSTALLER_SHA256}  ${uv_tmp}" | sha256sum -c -
+  sh "$uv_tmp"
+  rm -f "$uv_tmp"
+  trap - EXIT
+  hash -r
+  if ! uv_is_pinned; then
+    echo "error: uv ${UV_VERSION} is not on PATH after install" >&2
+    exit 1
+  fi
+fi
+# system-report.yml uses Python 3.13. A leftover venv from another version
+# would keep receiving requirements, so recreate it.
+uv python install 3.13
+if [ -x .venv/bin/python ] && ! .venv/bin/python -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)'; then
+  rm -rf .venv
+fi
+if [ ! -x .venv/bin/python ]; then
+  uv venv --python 3.13 .venv
+fi
+uv pip install --python .venv/bin/python -r requirements.txt
+
+# --- ShellCheck 0.11.0 (portable-ci.yml checks the exact version) ---
+if ! command -v shellcheck >/dev/null 2>&1 || ! shellcheck_is_pinned shellcheck; then
+  if [ "$(uname -m)" = "x86_64" ]; then
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    curl -fsSL --retry 3 -o "$tmp/shellcheck.tar.xz" \
+      https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+    echo "8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  $tmp/shellcheck.tar.xz" | sha256sum -c -
+    tar -xf "$tmp/shellcheck.tar.xz" -C "$tmp"
+    $SUDO install -m 0755 "$tmp/shellcheck-v0.11.0/shellcheck" /usr/local/bin/shellcheck
+    rm -rf "$tmp"
+    trap - EXIT
+    # ~/.local/bin is ahead of /usr/local/bin. Move an older shellcheck out of
+    # that directory so the pin wins. Keep the first backup, and keep any later
+    # copy under a new name.
+    if [ -x "$HOME/.local/bin/shellcheck" ] && ! shellcheck_is_pinned "$HOME/.local/bin/shellcheck"; then
+      mkdir -p "$HOME/.amp-orb-backup"
+      backup="$HOME/.amp-orb-backup/shellcheck"
+      if [ -e "$backup" ]; then
+        backup="$(mktemp "$HOME/.amp-orb-backup/shellcheck.XXXXXX")"
+      fi
+      mv -f "$HOME/.local/bin/shellcheck" "$backup"
+    fi
+    hash -r
+    if ! command -v shellcheck >/dev/null 2>&1 || ! shellcheck_is_pinned shellcheck; then
+      echo "error: ShellCheck 0.11.0 is not the shellcheck on PATH ($(command -v shellcheck 2>/dev/null || echo missing))" >&2
+      exit 1
+    fi
+  else
+    echo "warning: pinned ShellCheck 0.11.0 checksum is for x86_64 only; skipping on $(uname -m)" >&2
+  fi
+fi
+
+# --- Expose the tools to later shells ---
+# The PATH exports above last only for this script; Amp starts the agent's shell
+# separately. Login shells get these directories from /etc/profile.d, and every other
+# shell finds the entry points through symlinks in /usr/local/bin (on the default PATH).
+# In login shells the venv's bin comes first, so python3 is the venv's Python.
+# The links skip python and pip; other shells get the python3 wrapper below instead.
+repo_root="$(pwd)"
+tool_dirs=("$repo_root/.venv/bin" "$HOME/.local/bin")
+# shellcheck disable=SC2016 # $PATH must expand when the profile is sourced, not now.
+printf 'export PATH=%q:$PATH\n' "$(IFS=:; echo "${tool_dirs[*]}")" |
+  $SUDO tee /etc/profile.d/amp-orb-Ship-of-Theseus-Workstation.sh >/dev/null
+for dir in "${tool_dirs[@]}"; do
+  [ -d "$dir" ] || continue
+  for tool in "$dir"/*; do
+    name="${tool##*/}"
+    case "$name" in
+      # uv's installer also drops env/env.fish (sourced, not run) in ~/.local/bin.
+      python* | pip* | activate* | deactivate | Activate.ps1 | env | env.fish) continue ;;
+    esac
+    if [ -f "$tool" ] && [ -x "$tool" ]; then
+      link_owned_tool "$tool" "$repo_root"
+    fi
+  done
+done
+
+# scripts/theseus-report runs `#!/usr/bin/env python3` and needs the venv's jsonschema.
+# /usr/local/bin precedes /usr/bin on the default PATH. Install the wrapper when
+# that path is free, and refresh it when it is the regular file this setup wrote.
+# Leave an unrelated file or any symlink alone.
+venv_python="$repo_root/.venv/bin/python3"
+python3_dest="/usr/local/bin/python3"
+if { [ ! -e "$python3_dest" ] && [ ! -L "$python3_dest" ]; } || python3_wrapper_is_ours "$python3_dest"; then
+  install_python3_wrapper "$venv_python"
+else
+  echo "warning: leaving existing ${python3_dest} unchanged" >&2
+fi
+
+# .venv/ is not in .gitignore here, so keep it out of `git status` in the orb.
+exclude_file="$(git rev-parse --git-path info/exclude)"
+mkdir -p "$(dirname "$exclude_file")"
+grep -qxF '/.venv/' "$exclude_file" 2>/dev/null || echo '/.venv/' >>"$exclude_file"
+
+echo "Amp orb setup for Ship-of-Theseus-Workstation finished."
