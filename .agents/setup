@@ -7,7 +7,7 @@
 #
 # Installs only what this repo's CI and manifests need:
 #   - apt: curl, ca-certificates
-#   - uv + Python 3.13 venv with requirements.txt
+#   - uv 0.13.5 (pinned installer digest) + Python 3.13 venv with requirements.txt
 #   - ShellCheck 0.11.0 (pinned tarball + sha256, as in portable-ci.yml)
 #   - tool directories exposed to later shells (/etc/profile.d + /usr/local/bin links)
 #
@@ -20,6 +20,22 @@ SUDO=""
 if [ "$(id -u)" -ne 0 ]; then
   SUDO="sudo"
 fi
+
+# Latest stable uv release. The unversioned astral.sh installer is mutable;
+# this digest is the GitHub release asset uv-installer.sh for that tag.
+# The installer checks the uv binary's own sha256 before it installs it.
+UV_VERSION=0.13.5
+UV_INSTALLER_SHA256=1c6e7f025499664633ac2dce43a210800510e9ef0625c52e034a8afdf8bf177a
+
+uv_is_pinned() {
+  local version_line
+  command -v uv >/dev/null 2>&1 || return 1
+  version_line="$(uv --version 2>/dev/null || true)"
+  case "$version_line" in
+    "uv ${UV_VERSION}" | "uv ${UV_VERSION} "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 # Install Debian packages that are not already present.
 apt_install() {
@@ -40,8 +56,20 @@ apt_install curl ca-certificates
 
 # --- Python (uv) ---
 export PATH="$HOME/.local/bin:$PATH"
-if ! command -v uv >/dev/null 2>&1; then
-  curl -LsSf https://astral.sh/uv/install.sh | sh
+if ! uv_is_pinned; then
+  uv_tmp="$(mktemp)"
+  trap 'rm -f "$uv_tmp"' EXIT
+  curl -fsSL --retry 3 -o "$uv_tmp" \
+    "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-installer.sh"
+  echo "${UV_INSTALLER_SHA256}  ${uv_tmp}" | sha256sum -c -
+  sh "$uv_tmp"
+  rm -f "$uv_tmp"
+  trap - EXIT
+  hash -r
+  if ! uv_is_pinned; then
+    echo "error: uv ${UV_VERSION} is not on PATH after install" >&2
+    exit 1
+  fi
 fi
 # system-report.yml uses Python 3.13.
 uv python install 3.13
