@@ -57,9 +57,9 @@ scripts/theseus-provenance --help
   allowlist. Failure handling differs per collector (`collect-node-inventory.sh` removes partial
   output, while `runner-health.sh` keeps a report on failure), so read the script before changing it.
 - The provenance manifest has its own redaction contract in `docs/provenance-manifest.md`: the host
-  fingerprint is a keyed hash of the machine ID, checkout paths and git remote URLs are never stored,
-  and a failed probe records `unavailable` with a reason, never a guessed value. Don't weaken it as a
-  side effect of other work.
+  fingerprint is a keyed hash of the machine ID, the manifest leaves out checkout paths and git remote
+  URLs, and a failed probe records `unavailable` with a reason instead of a guessed value. Don't weaken
+  it as a side effect of other work.
 - `docs/change-log.md` is a curated, dated record of meaningful infrastructure changes, not a
   mirror of `git log`.
 - Commit subjects follow Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, `ci:`). The `(#N)`
