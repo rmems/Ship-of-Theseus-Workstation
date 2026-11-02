@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Claude-specific notes only. There is no `AGENTS.md` in this repo; project overview, engineering principles, and the CI
+Detailed notes for Claude and other agents; `AGENTS.md` is the short cross-agent guide and points back here. Project overview, engineering principles, and the CI
 tiers are in `README.md`, and runbooks are in `docs/` (`node-baseline.md`, `self-hosted-runner.md`, `backup-recovery.md`,
 `system-report.md`, `provenance-manifest.md`), so they are not repeated here.
 
