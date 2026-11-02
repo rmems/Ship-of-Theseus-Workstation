@@ -1,3 +1,5 @@
 __pycache__/
 *.py[cod]
 benchmarks/telemetry/
+scripts/windows-cpu-temperature/bin/
+scripts/windows-cpu-temperature/obj/

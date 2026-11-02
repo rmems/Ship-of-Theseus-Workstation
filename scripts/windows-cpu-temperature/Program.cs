@@ -17,19 +17,20 @@ try
                     .Select(sensor => new { Hardware = hardware.Name, Sensor = sensor.Name, Value = sensor.Value!.Value }))
                 .ToArray();
 
-            var selected = candidates
+            var ranked = candidates
                 .Select(sensor => new { Sensor = sensor, Rank = Rank(sensor.Sensor) })
                 .Where(item => item.Rank < int.MaxValue)
                 .OrderBy(item => item.Rank)
                 .Select(item => item.Sensor)
-                .FirstOrDefault();
+                .ToArray();
 
-            var validReading = selected is not null && float.IsFinite(selected.Value) && selected.Value > 0 && selected.Value <= 125;
-            var sensorStatus = selected is null ? "sensor_not_found" : validReading ? "ok" : "invalid_reading";
+            var selected = ranked.FirstOrDefault(sensor => float.IsFinite(sensor.Value) && sensor.Value > 0 && sensor.Value <= 125);
+            var diagnosticSensor = selected ?? ranked.FirstOrDefault();
+            var sensorStatus = selected is not null ? "ok" : diagnosticSensor is null ? "sensor_not_found" : "invalid_reading";
             var response = new
             {
-                value_c = validReading ? (float?)selected!.Value : null,
-                sensor = validReading ? $"{selected!.Hardware}/{selected.Sensor}" : null,
+                value_c = selected is not null ? (float?)selected.Value : null,
+                sensor = diagnosticSensor is not null ? $"{diagnosticSensor.Hardware}/{diagnosticSensor.Sensor}" : null,
                 status = sensorStatus,
                 source = "LibreHardwareMonitor"
             };

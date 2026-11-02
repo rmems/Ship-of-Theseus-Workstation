@@ -149,6 +149,16 @@ def main():
     workload = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not workload:
         parser.error("provide the sustained workload command after --")
+    helper_command = None
+    if args.cpu_temp_helper:
+        if platform.system() != "Windows":
+            parser.error("--cpu-temp-helper is currently supported only on Windows")
+        helper_path = Path(args.cpu_temp_helper).expanduser().resolve()
+        if not helper_path.is_file():
+            parser.error(f"CPU temperature helper not found: {helper_path}")
+        helper_command = [str(helper_path)]
+        if helper_path.suffix.lower() == ".dll":
+            helper_command.insert(0, "dotnet")
     out = Path(args.output)
     out.mkdir(parents=True, exist_ok=False)
     csv_path = out / "telemetry.csv"
@@ -158,12 +168,7 @@ def main():
                  "--format=csv,noheader,nounits"]
     gpu_available = shutil.which("nvidia-smi") is not None
     temperature_helper = None
-    if args.cpu_temp_helper:
-        if platform.system() != "Windows":
-            parser.error("--cpu-temp-helper is currently supported only on Windows")
-        helper_command = [args.cpu_temp_helper]
-        if args.cpu_temp_helper.lower().endswith(".dll"):
-            helper_command.insert(0, "dotnet")
+    if helper_command:
         temperature_helper = subprocess.Popen(helper_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                               stderr=None, text=True, bufsize=1)
     cpu0 = sample_cpu()
