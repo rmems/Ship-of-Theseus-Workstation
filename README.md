@@ -125,6 +125,8 @@ The canonical sanitized execution-environment artifact is documented in [`docs/s
 
 Every telemetry capture, benchmark, or experiment result should carry a compact provenance manifest from `scripts/theseus-provenance`. The manifest records kernel, driver, CUDA, firmware, CPU policy, toolchain, and commit state, and links to the system report and run artifacts by digest. Its schema, field-by-field redaction decisions, and attachment rules are in [`docs/provenance-manifest.md`](docs/provenance-manifest.md).
 
+For run-scoped sustained-load sampling, see the profile and invocation examples in [`docs/workload-catalog.md`](docs/workload-catalog.md) and `scripts/capture-telemetry.sh`. Captures include GPU readings where `nvidia-smi` supports them, CPU and memory utilization, optional CPU temperature, UTC/elapsed timing, and a host/workload manifest. On Windows, build the optional LibreHardwareMonitor CPU temperature helper as described in the workload catalog. Raw output under `benchmarks/telemetry/` is ignored by Git.
+
 The repository should stay narrow: application-specific code belongs in its own project. Ship-of-Theseus-Workstation documents the **platform those projects run on**.
 
 ## ✅ Continuous integration

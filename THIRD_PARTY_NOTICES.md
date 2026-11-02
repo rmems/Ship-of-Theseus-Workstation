@@ -12,6 +12,7 @@ code into this repository.
 | --- | --- | --- |
 | [lshw](https://github.com/lyonel/lshw) | Optional hardware inventory | GNU General Public License, version 2; upstream [COPYING](https://github.com/lyonel/lshw/blob/master/COPYING) |
 | [lm-sensors](https://github.com/lm-sensors/lm-sensors) | Optional sensor readings | GNU General Public License, version 2; upstream [COPYING](https://github.com/lm-sensors/lm-sensors/blob/master/COPYING) |
+| [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) | Optional Windows CPU temperature provider, restored as a NuGet dependency for the helper | Mozilla Public License, version 2.0; [upstream license](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/blob/master/Licenses/LICENSE) |
 | [fio](https://github.com/axboe/fio) | Operator-selected storage benchmarking | GNU General Public License, version 2; upstream [COPYING](https://github.com/axboe/fio/blob/master/COPYING) |
 | [stress-ng](https://github.com/ColinIanKing/stress-ng) | Operator-selected CPU/memory stress workloads | GNU General Public License, version 2; upstream [COPYING](https://github.com/ColinIanKing/stress-ng/blob/master/COPYING) |
 | NVIDIA `nvidia-smi` and CUDA tooling | Optional GPU/runtime queries | Not redistributed here; governed by NVIDIA's applicable distribution terms |
