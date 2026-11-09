@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
-"""Run-scoped, read-only workstation telemetry collector."""
+"""Run-scoped, read-only workstation telemetry collector.
+
+This local CLI intentionally executes the operator's workload and optional helper.
+All child commands use argument lists without a shell, not remote/request input.
+"""
 import argparse
-import ctypes
-import ctypes.wintypes
 import csv
 import datetime as dt
 import json
-import os
+import math
 import platform
+import queue
 import shutil
-import subprocess
+# Required by this local workload runner.
+import subprocess  # nosec B404
 import sys
+import threading
 import time
 from pathlib import Path
+
+from telemetry_sensors import cpu_model, cpu_temp, memory, sample_cpu
 
 
 FIELDS = ["timestamp_utc", "elapsed_seconds", "run_id", "gpu_temperature_c",
@@ -20,223 +27,268 @@ FIELDS = ["timestamp_utc", "elapsed_seconds", "run_id", "gpu_temperature_c",
           "gpu_memory_used_mib", "gpu_clock_mhz", "cpu_utilization_pct",
           "memory_total_bytes", "memory_available_bytes", "cpu_temperature_c",
           "cpu_temperature_sensor", "gpu_collection_status", "cpu_temperature_status"]
+GPU_QUERY = ["nvidia-smi", "--id=0",
+             "--query-gpu=temperature.gpu,power.draw,utilization.gpu,utilization.memory,memory.used,clocks.gr",
+             "--format=csv,noheader,nounits"]
+PROCESS_TIMEOUT = 5
 
 
-def command(args, timeout=5):
+def command(args, timeout=PROCESS_TIMEOUT):
     try:
-        result = subprocess.run(args, text=True, capture_output=True, timeout=timeout, check=True)
+        # Fixed local probes only; no shell expansion or remote input.
+        result = subprocess.run(args, shell=False, text=True, capture_output=True,  # nosec B603 # nosemgrep # noqa: S603
+                                timeout=timeout, check=True)
         return result.stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return None
 
 
-def sample_cpu():
-    if platform.system() == "Windows":
-        idle, kernel, user = ctypes.wintypes.FILETIME(), ctypes.wintypes.FILETIME(), ctypes.wintypes.FILETIME()
-        if not ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)):
-            return None
-        def ticks(value):
-            return (value.dwHighDateTime << 32) | value.dwLowDateTime
-        idle_ticks, kernel_ticks, user_ticks = ticks(idle), ticks(kernel), ticks(user)
-        # Windows kernel time includes idle time.
-        return kernel_ticks + user_ticks, idle_ticks
+def launch(args, **kwargs):
+    # Executing operator-supplied argv is the purpose of this local CLI.
+    return subprocess.Popen(args, shell=False, **kwargs)  # nosec B603 # nosemgrep # noqa: S603
+
+
+def stop_process(process):
+    if process is None:
+        return
+    if process.poll() is None:
+        process.terminate()
     try:
-        values = [int(x) for x in Path("/proc/stat").read_text().splitlines()[0].split()[1:]]
-        idle = values[3] + values[4]
-        return sum(values), idle
-    except (OSError, ValueError, IndexError):
+        process.wait(timeout=PROCESS_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=PROCESS_TIMEOUT)
+
+
+def read_response(stream, responses):
+    try:
+        responses.put(stream.readline())
+    except (OSError, ValueError):
+        responses.put("")
+
+
+def decode_temperature(line):
+    response = json.loads(line)
+    if not isinstance(response, dict):
+        raise ValueError("helper response must be an object")
+    value = response.get("value_c")
+    if value is not None and not valid_temperature(value):
+        return None, response.get("sensor"), "invalid_reading"
+    return value, response.get("sensor"), response.get("status", "unavailable")
+
+
+def valid_temperature(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return math.isfinite(value) and 0 < value <= 125
+
+
+class TemperatureHelper:
+    def __init__(self, args):
+        self.process = launch(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                              text=True, bufsize=1)
+        self.failed = False
+
+    def sample(self, timeout=PROCESS_TIMEOUT):
+        if self.failed or self.process.poll() is not None:
+            return None, None, "unavailable"
+        responses = queue.Queue(maxsize=1)
+        try:
+            self.process.stdin.write("sample\n")
+            self.process.stdin.flush()
+            reader = threading.Thread(target=read_response,
+                                      args=(self.process.stdout, responses), daemon=True)
+            reader.start()
+            line = responses.get(timeout=timeout)
+            return decode_temperature(line)
+        except queue.Empty:
+            self.failed = True
+            stop_process(self.process)
+            return None, None, "timeout"
+        except (OSError, ValueError, AttributeError):
+            self.failed = True
+            return None, None, "read_error"
+
+    def close(self):
+        stop_process(self.process)
+        self.process.stdin.close()
+        self.process.stdout.close()
+
+
+def helper_command(parser, path):
+    if not path:
         return None
+    if platform.system() != "Windows":
+        parser.error("--cpu-temp-helper is currently supported only on Windows")
+    helper_path = Path(path).expanduser().resolve()
+    if not helper_path.is_file():
+        parser.error("CPU temperature helper not found")
+    args = [str(helper_path)]
+    if helper_path.suffix.lower() == ".dll":
+        args.insert(0, "dotnet")
+    return args
 
 
-def memory():
-    if platform.system() == "Windows":
-        class MEMORYSTATUSEX(ctypes.Structure):
-            _fields_ = [("dwLength", ctypes.wintypes.DWORD), ("dwMemoryLoad", ctypes.wintypes.DWORD),
-                        ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
-                        ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
-                        ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
-                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
-        status = MEMORYSTATUSEX()
-        status.dwLength = ctypes.sizeof(status)
-        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
-            return {"MemTotal": status.ullTotalPhys, "MemAvailable": status.ullAvailPhys}
-        return {}
-    found = {}
-    try:
-        for line in Path("/proc/meminfo").read_text().splitlines():
-            key, value = line.split(":", 1)
-            if key in ("MemTotal", "MemAvailable"):
-                found[key] = int(value.strip().split()[0]) * 1024
-    except (OSError, ValueError, IndexError):
-        pass
-    return found
-
-
-def cpu_model():
-    if platform.system() == "Windows":
-        return os.environ.get("PROCESSOR_IDENTIFIER")
-    try:
-        for line in Path("/proc/cpuinfo").read_text().splitlines():
-            if line.lower().startswith("model name"):
-                return line.split(":", 1)[1].strip()
-    except OSError:
-        pass
-    return None
-
-
-def cpu_temp():
-    # Prefer AMD Tctl; hwmon labels are optional and sensor support varies by host.
-    for path in sorted(Path("/sys/class/hwmon").glob("hwmon*/temp*_input")):
-        label_path = path.with_name(path.name.replace("_input", "_label"))
-        try:
-            label = label_path.read_text().strip() if label_path.exists() else ""
-            if "tctl" not in label.lower() and "cpu" not in label.lower() and "package" not in label.lower():
-                continue
-            return int(path.read_text().strip()) / 1000, "sysfs_hwmon"
-        except (OSError, ValueError):
-            continue
-    # lm_sensors is a safe optional fallback; never infer a value from another component.
-    output = command(["sensors", "-j"])
-    if output:
-        try:
-            def find_temp(value):
-                if isinstance(value, dict):
-                    for key, item in value.items():
-                        if "tctl" in key.lower() or "package id 0" in key.lower():
-                            if isinstance(item, dict):
-                                for subkey, temp in item.items():
-                                    if subkey.endswith("_input") and isinstance(temp, (int, float)):
-                                        return float(temp)
-                        got = find_temp(item)
-                        if got is not None:
-                            return got
-                elif isinstance(value, list):
-                    for item in value:
-                        got = find_temp(item)
-                        if got is not None:
-                            return got
-                return None
-            value = find_temp(json.loads(output))
-            if value is not None:
-                return value, "lm_sensors"
-        except (ValueError, TypeError):
-            pass
-    return None, "unavailable"
-
-
-def sample_lhm_temperature(helper):
-    if helper is None or helper.poll() is not None:
-        return None, None, "unavailable"
-    try:
-        helper.stdin.write("sample\n")
-        helper.stdin.flush()
-        response = json.loads(helper.stdout.readline())
-        return response.get("value_c"), response.get("sensor"), response.get("status", "unavailable")
-    except (OSError, ValueError, AttributeError):
-        return None, None, "read_error"
-
-
-def main():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", required=True, help="Workload or benchmark identifier")
+    parser.add_argument("--run-id", required=True, help="Public workload identifier; do not include secrets")
     parser.add_argument("--interval-seconds", type=float, default=5)
     parser.add_argument("--output", required=True, help="New directory for CSV and manifest")
-    parser.add_argument("--cpu-temp-helper", help="path to the LibreHardwareMonitor helper executable or DLL; Windows only")
+    parser.add_argument("--cpu-temp-helper", help="Windows LibreHardwareMonitor executable or DLL")
     parser.add_argument("command", nargs=argparse.REMAINDER, help="Workload command after --")
-    args = parser.parse_args()
-    if args.interval_seconds <= 0:
-        parser.error("--interval-seconds must be positive")
-    workload = args.command[1:] if args.command[:1] == ["--"] else args.command
-    if not workload:
+    args = parser.parse_args(argv)
+    if not math.isfinite(args.interval_seconds) or args.interval_seconds <= 0:
+        parser.error("--interval-seconds must be finite and positive")
+    args.command = args.command[1:] if args.command[:1] == ["--"] else args.command
+    if not args.command:
         parser.error("provide the sustained workload command after --")
-    helper_command = None
-    if args.cpu_temp_helper:
-        if platform.system() != "Windows":
-            parser.error("--cpu-temp-helper is currently supported only on Windows")
-        helper_path = Path(args.cpu_temp_helper).expanduser().resolve()
-        if not helper_path.is_file():
-            parser.error(f"CPU temperature helper not found: {helper_path}")
-        helper_command = [str(helper_path)]
-        if helper_path.suffix.lower() == ".dll":
-            helper_command.insert(0, "dotnet")
-    out = Path(args.output)
-    out.mkdir(parents=True, exist_ok=False)
-    csv_path = out / "telemetry.csv"
-    start_wall = dt.datetime.now(dt.timezone.utc)
-    start_mono = time.monotonic()
-    gpu_query = ["nvidia-smi", "--query-gpu=temperature.gpu,power.draw,utilization.gpu,utilization.memory,memory.used,clocks.gr",
-                 "--format=csv,noheader,nounits"]
-    gpu_available = shutil.which("nvidia-smi") is not None
-    temperature_helper = None
-    if helper_command:
-        temperature_helper = subprocess.Popen(helper_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                              stderr=None, text=True, bufsize=1)
-    cpu0 = sample_cpu()
-    process = subprocess.Popen(workload)
-    rows = 0
-    try:
-        with csv_path.open("x", newline="", encoding="utf-8") as stream:
+    args.helper_command = helper_command(parser, args.cpu_temp_helper)
+    return args
+
+
+def gpu_sample(available):
+    if not available:
+        return [""] * 6, "unavailable"
+    output = command(GPU_QUERY)
+    if not output:
+        return [""] * 6, "query_failed"
+    values = [value.strip() for value in output.splitlines()[0].split(",")]
+    if len(values) != 6:
+        return [""] * 6, "query_failed"
+    return [normalize_gpu_value(value) for value in values], "ok"
+
+
+def normalize_gpu_value(value):
+    return "" if value.lower() in ("n/a", "na", "[not supported]") else value
+
+
+def cpu_utilization(previous, current):
+    if not previous or not current:
+        return None
+    total = current[0] - previous[0]
+    if total <= 0:
+        return None
+    return round(100 * (1 - (current[1] - previous[1]) / total), 2)
+
+
+def csv_value(value):
+    return "null" if value is None or value == "" else value
+
+
+class Capture:
+    def __init__(self, args, out):
+        self.args = args
+        self.out = out
+        self.started = dt.datetime.now(dt.timezone.utc)
+        self.start_mono = time.monotonic()
+        self.gpu_available = shutil.which("nvidia-smi") is not None
+        self.helper = None
+        self.process = None
+        self.rows = 0
+        self.exit_code = None
+        self.status = "failed"
+        self.previous_cpu = None
+
+    def sample(self, now):
+        gpu_values, gpu_status = gpu_sample(self.gpu_available)
+        current_cpu = sample_cpu()
+        utilization = cpu_utilization(self.previous_cpu, current_cpu)
+        self.previous_cpu = current_cpu
+        mem = memory()
+        temperature, sensor, temperature_status = self.temperature()
+        values = [dt.datetime.now(dt.timezone.utc).isoformat(),
+                  round(now - self.start_mono, 3), self.args.run_id, *gpu_values,
+                  utilization, mem.get("MemTotal"), mem.get("MemAvailable"),
+                  temperature, sensor, gpu_status, temperature_status]
+        return dict(zip(FIELDS, map(csv_value, values)))
+
+    def temperature(self):
+        if self.helper:
+            return self.helper.sample()
+        if platform.system() == "Windows":
+            return None, None, "unavailable"
+        return cpu_temp(command)
+
+    def collect(self):
+        with (self.out / "telemetry.csv").open("x", newline="", encoding="utf-8") as stream:
             writer = csv.DictWriter(stream, fieldnames=FIELDS)
             writer.writeheader()
             while True:
                 now = time.monotonic()
-                gpu_text = command(gpu_query) if gpu_available else None
-                gpu_values = (gpu_text.split(",") if gpu_text else [])
-                gpu_values = [v.strip() for v in gpu_values[:6]]
-                gpu_values = ["" if v.lower() in ("n/a", "na", "[not supported]") else v for v in gpu_values]
-                gpu_values += [""] * (6 - len(gpu_values))
-                cpu1 = sample_cpu()
-                utilization = None
-                if cpu0 and cpu1 and cpu1[0] > cpu0[0]:
-                    utilization = round(100 * (1 - (cpu1[1] - cpu0[1]) / (cpu1[0] - cpu0[0])), 2)
-                cpu0 = cpu1
-                mem = memory()
-                if temperature_helper:
-                    temperature, temperature_sensor, temp_source = sample_lhm_temperature(temperature_helper)
-                else:
-                    temperature, temp_source = cpu_temp()
-                    temperature_sensor = None
-                elapsed = now - start_mono
-                values = [
-                    dt.datetime.now(dt.timezone.utc).isoformat(), round(elapsed, 3), args.run_id,
-                    *gpu_values, utilization, mem.get("MemTotal"), mem.get("MemAvailable"), temperature,
-                    temperature_sensor,
-                    "ok" if gpu_text else ("unavailable" if not gpu_available else "query_failed"), temp_source]
-                writer.writerow({key: ("null" if value is None or value == "" else value)
-                                 for key, value in zip(FIELDS, values)})
+                writer.writerow(self.sample(now))
                 stream.flush()
-                rows += 1
-                status = process.poll()
-                if status is not None:
-                    break
-                cpu0 = cpu1
-                time.sleep(max(0, args.interval_seconds - (time.monotonic() - now)))
-        exit_code = process.wait()
-    except KeyboardInterrupt:
-        process.terminate()
-        exit_code = process.wait()
-    finally:
-        if temperature_helper and temperature_helper.poll() is None:
-            temperature_helper.stdin.close()
-            temperature_helper.wait(timeout=5)
-    ended = dt.datetime.now(dt.timezone.utc)
-    revision = command(["git", "rev-parse", "HEAD"])
-    gpu_name = command(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"]) if gpu_available else None
-    driver = command(["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader"]) if gpu_available else None
-    manifest = {
-        "schema_version": 1, "run_id": args.run_id, "started_at_utc": start_wall.isoformat(),
-        "ended_at_utc": ended.isoformat(), "elapsed_seconds": round(time.monotonic() - start_mono, 3),
-        "sample_interval_seconds": args.interval_seconds, "sample_count": rows,
-        "workload_argv": workload, "workload_exit_code": exit_code,
-        "host": {"hostname": platform.node(), "platform": platform.platform(), "python": platform.python_version(),
-                 "cpu_model": cpu_model(), "gpu_model": gpu_name, "gpu_driver": driver, "repository_revision": revision},
-        "sources": {"gpu": "nvidia-smi" if gpu_available else "unavailable",
-                    "cpu_temperature": "LibreHardwareMonitor helper" if args.cpu_temp_helper else "optional hwmon/lm_sensors; null when unsupported",
-                    "cpu_utilization": "GetSystemTimes" if platform.system() == "Windows" else "/proc/stat",
-                    "memory": "GlobalMemoryStatusEx" if platform.system() == "Windows" else "/proc/meminfo"},
-        "telemetry_file": "telemetry.csv"
-    }
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+                self.rows += 1
+                if self.process.poll() is not None:
+                    return self.process.wait()
+                time.sleep(max(0, self.args.interval_seconds - (time.monotonic() - now)))
+
+    def run(self):
+        try:
+            if self.args.helper_command:
+                self.helper = TemperatureHelper(self.args.helper_command)
+            self.previous_cpu = sample_cpu()
+            self.process = launch(self.args.command)
+            self.exit_code = self.collect()
+            self.status = "completed"
+        except KeyboardInterrupt:
+            self.status = "interrupted"
+        finally:
+            self.finish()
+        return self.exit_code
+
+    def finish(self):
+        try:
+            stop_process(self.process)
+            if self.process is not None:
+                self.exit_code = self.process.returncode
+        finally:
+            try:
+                if self.helper:
+                    self.helper.close()
+            finally:
+                self.write_manifest()
+
+    def write_manifest(self):
+        manifest = {
+            "schema_version": 1, "run_id": self.args.run_id,
+            "started_at_utc": self.started.isoformat(),
+            "ended_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "elapsed_seconds": round(time.monotonic() - self.start_mono, 3),
+            "sample_interval_seconds": self.args.interval_seconds,
+            "sample_count": self.rows, "workload_exit_code": self.exit_code,
+            "collection_status": self.status, "host": host_metadata(self.gpu_available),
+            "sources": source_metadata(self.args, self.gpu_available),
+            "telemetry_file": "telemetry.csv",
+        }
+        (self.out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
+def gpu_metadata(field, available):
+    if not available:
+        return None
+    return command(["nvidia-smi", "--id=0", f"--query-gpu={field}", "--format=csv,noheader"])
+
+
+def host_metadata(gpu_available):
+    return {"platform": platform.system(), "python": platform.python_version(),
+            "cpu_model": cpu_model(), "gpu_model": gpu_metadata("name", gpu_available),
+            "gpu_driver": gpu_metadata("driver_version", gpu_available),
+            "repository_revision": command(["git", "rev-parse", "HEAD"])}
+
+
+def source_metadata(args, gpu_available):
+    windows = platform.system() == "Windows"
+    return {"gpu": "nvidia-smi" if gpu_available else "unavailable", "gpu_index": 0,
+            "cpu_temperature": "LibreHardwareMonitor helper" if args.helper_command else "optional hwmon/lm_sensors",
+            "cpu_utilization": "GetSystemTimes" if windows else "/proc/stat",
+            "memory": "GlobalMemoryStatusEx" if windows else "/proc/meminfo"}
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    out = Path(args.output)
+    out.mkdir(parents=True, exist_ok=False)
+    exit_code = Capture(args, out).run()
     print(out)
     return exit_code
 

@@ -13,7 +13,7 @@ The catalog describes dependency classes, not ownership. Application-specific do
 
 ## Sustained workload telemetry profile
 
-Use `scripts/capture-telemetry.sh` to sample during a real workload. The collector launches the workload after opening the output directory, samples at a measured monotonic interval, and writes a bounded `telemetry.csv` plus `manifest.json`. The manifest records the run ID, command, host/platform, start/end UTC, sample count, and exit status. Linux uses `/proc` and labeled CPU/Tctl hwmon sensors; Windows uses `GetSystemTimes` and `GlobalMemoryStatusEx` for CPU and memory. Missing sensor readings are written as `null`; collection status columns distinguish a missing NVIDIA tool from a failed query. CPU temperature is collected from labeled CPU/Tctl hwmon sensors or `lm_sensors` on Linux. On Windows, build the optional LibreHardwareMonitor helper:
+Use `scripts/capture-telemetry.sh` to sample during a real workload. The collector launches the workload after opening the output directory, samples at a measured monotonic interval, and writes `telemetry.csv` plus `manifest.json` until the workload exits. The manifest records the public run ID, OS family, hardware models, repository revision, start/end UTC, sample count, collection status, and workload exit status. It omits the hostname and workload command line, which may contain private paths or credentials. Use a non-sensitive run ID and link artifacts to a separate `theseus-provenance` manifest as described in [provenance-manifest.md](provenance-manifest.md). Linux uses `/proc`; Windows uses `GetSystemTimes` and `GlobalMemoryStatusEx` for CPU and memory. Missing sensor readings are written as `null`; collection status columns distinguish a missing NVIDIA tool from a failed query. GPU sampling and metadata explicitly select NVIDIA GPU index 0, recorded in `sources.gpu_index`; other GPUs are not sampled. Linux CPU temperature uses only `k10temp`/`coretemp` sensors, preferring Tctl/Tdie over package readings, with the selected chip/label recorded in the CSV. `lm_sensors` is an optional fallback with the same selection rules. On Windows, build the optional LibreHardwareMonitor helper:
 
 ```powershell
 dotnet publish scripts/windows-cpu-temperature/windows-cpu-temperature.csproj `
@@ -31,7 +31,7 @@ python scripts/capture_telemetry.py `
   -- python -m your_project.evaluate --config configs/eval.yaml
 ```
 
-The helper records the chosen CPU sensor label in each CSV row and prefers Tctl/Tdie, then a CPU package sensor. The helper uses LibreHardwareMonitorLib 0.9.6; some sensors may require running the shell elevated. If no eligible CPU sensor is exposed, the value stays `null`. The tool observes hardware and does not control power, fans, or workload behavior.
+The helper records the chosen CPU sensor label in each CSV row and prefers Tctl/Tdie, then a CPU package sensor, including nested CPU hardware. The helper uses LibreHardwareMonitorLib 0.9.6; some sensors may require running the shell elevated. If no eligible CPU sensor is exposed, the value stays `null`. Helper reads time out after five seconds; an unresponsive helper is stopped and subsequent samples remain unavailable. Child processes are stopped on collection failure or interruption, and a manifest records partial collection. The tool observes hardware and does not control power or fans. Only run trusted local workload and helper executables: this CLI intentionally executes the arguments you supply, without a shell.
 
 Example profile for a sustained project training/evaluation command:
 

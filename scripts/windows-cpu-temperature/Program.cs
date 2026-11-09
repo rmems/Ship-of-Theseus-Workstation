@@ -2,58 +2,58 @@ using System.Text.Json;
 using LibreHardwareMonitor.Hardware;
 
 var computer = new Computer { IsCpuEnabled = true };
-computer.Open();
 try
 {
+    computer.Open();
     while (Console.ReadLine() is not null)
     {
-        try
-        {
-            computer.Accept(new UpdateVisitor());
-            var candidates = computer.Hardware
-                .Where(hardware => hardware.HardwareType == HardwareType.Cpu)
-                .SelectMany(hardware => hardware.Sensors
-                    .Where(sensor => sensor.SensorType == SensorType.Temperature && sensor.Value.HasValue)
-                    .Select(sensor => new { Hardware = hardware.Name, Sensor = sensor.Name, Value = sensor.Value!.Value }))
-                .ToArray();
-
-            var ranked = candidates
-                .Select(sensor => new { Sensor = sensor, Rank = Rank(sensor.Sensor) })
-                .Where(item => item.Rank < int.MaxValue)
-                .OrderBy(item => item.Rank)
-                .Select(item => item.Sensor)
-                .ToArray();
-
-            var selected = ranked.FirstOrDefault(sensor => float.IsFinite(sensor.Value) && sensor.Value > 0 && sensor.Value <= 125);
-            var diagnosticSensor = selected ?? ranked.FirstOrDefault();
-            var sensorStatus = selected is not null ? "ok" : diagnosticSensor is null ? "sensor_not_found" : "invalid_reading";
-            var response = new
-            {
-                value_c = selected is not null ? (float?)selected.Value : null,
-                sensor = diagnosticSensor is not null ? $"{diagnosticSensor.Hardware}/{diagnosticSensor.Sensor}" : null,
-                status = sensorStatus,
-                source = "LibreHardwareMonitor"
-            };
-            Console.WriteLine(JsonSerializer.Serialize(response));
-            Console.Out.Flush();
-        }
-        catch (Exception exception)
-        {
-            Console.WriteLine(JsonSerializer.Serialize(new
-            {
-                value_c = (float?)null,
-                sensor = (string?)null,
-                status = "read_error",
-                source = "LibreHardwareMonitor",
-                error = exception.GetType().Name
-            }));
-            Console.Out.Flush();
-        }
+        Console.WriteLine(JsonSerializer.Serialize(ReadTemperature(computer)));
+        Console.Out.Flush();
     }
 }
 finally
 {
     computer.Close();
+}
+
+static TemperatureResponse ReadTemperature(Computer computer)
+{
+    try
+    {
+        computer.Accept(new UpdateVisitor());
+        var ranked = computer.Hardware
+            .Where(hardware => hardware.HardwareType == HardwareType.Cpu)
+            .SelectMany(CpuSensors)
+            .Where(sensor => sensor.SensorType == SensorType.Temperature)
+            .Where(sensor => Rank(sensor.Name) < int.MaxValue)
+            .OrderBy(sensor => Rank(sensor.Name))
+            .ToArray();
+        var selected = ranked.FirstOrDefault(sensor => ValidTemperature(sensor.Value));
+        return BuildResponse(selected, ranked.FirstOrDefault());
+    }
+    catch (Exception exception)
+    {
+        return new TemperatureResponse(null, null, "read_error", error: exception.GetType().Name);
+    }
+}
+
+static IEnumerable<ISensor> CpuSensors(IHardware hardware)
+{
+    return hardware.Sensors.Concat(hardware.SubHardware.SelectMany(CpuSensors));
+}
+
+static bool ValidTemperature(float? value)
+{
+    return value.HasValue && float.IsFinite(value.Value) && value.Value > 0 && value.Value <= 125;
+}
+
+static TemperatureResponse BuildResponse(ISensor? selected, ISensor? diagnostic)
+{
+    var sensor = selected ?? diagnostic;
+    var label = sensor is null ? null : $"{sensor.Hardware.Name}/{sensor.Name}";
+    if (selected is not null)
+        return new TemperatureResponse(selected.Value, label, "ok");
+    return new TemperatureResponse(null, label, sensor is null ? "sensor_not_found" : "invalid_reading");
 }
 
 static int Rank(string name)
@@ -65,6 +65,9 @@ static int Rank(string name)
     return int.MaxValue;
 }
 
+sealed record TemperatureResponse(float? value_c, string? sensor, string status,
+                                  string source = "LibreHardwareMonitor", string? error = null);
+
 sealed class UpdateVisitor : IVisitor
 {
     public void VisitComputer(IComputer computer) => computer.Traverse(this);
@@ -74,6 +77,12 @@ sealed class UpdateVisitor : IVisitor
         foreach (var subHardware in hardware.SubHardware)
             subHardware.Accept(this);
     }
-    public void VisitSensor(ISensor sensor) { }
-    public void VisitParameter(IParameter parameter) { }
+    public void VisitSensor(ISensor sensor)
+    {
+        // Hardware.Update() refreshes sensor values; no per-sensor action is needed.
+    }
+    public void VisitParameter(IParameter parameter)
+    {
+        // This read-only visitor never changes hardware parameters.
+    }
 }
