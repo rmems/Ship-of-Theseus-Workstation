@@ -31,7 +31,7 @@ python scripts/capture_telemetry.py `
   -- python -m your_project.evaluate --config configs/eval.yaml
 ```
 
-The helper records the chosen CPU sensor label in each CSV row and prefers Tctl/Tdie, then a CPU package sensor, including nested CPU hardware. The helper uses LibreHardwareMonitorLib 0.9.6; some sensors may require running the shell elevated. If no eligible CPU sensor is exposed, the value stays `null`. Helper reads time out after five seconds; an unresponsive helper is stopped and subsequent samples remain unavailable. Child processes are stopped on collection failure or interruption, and a manifest records partial collection. The tool observes hardware and does not control power or fans. Only run trusted local workload and helper executables: this CLI intentionally executes the arguments you supply, without a shell.
+The helper records the chosen CPU sensor label in each CSV row and prefers Tctl/Tdie, then a CPU package sensor, including nested CPU hardware. The helper uses LibreHardwareMonitorLib 0.9.6; some sensors may require running the shell elevated. If no eligible CPU sensor is exposed, the value stays `null`. Helper reads time out after five seconds; an unresponsive helper is stopped and subsequent samples remain unavailable. Child processes are stopped on collection failure or interruption, and a manifest records partial collection. If initialization fails before `manifest.json` is written, the collector removes an empty output directory it just created. The tool observes hardware and does not control power or fans. Only run trusted local workload and helper executables: this CLI intentionally executes the arguments you supply, without a shell.
 
 Example profile for a sustained project training/evaluation command:
 

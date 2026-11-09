@@ -60,14 +60,14 @@ class TelemetryTests(unittest.TestCase):
         self.hwmon(1, "coretemp", "Package id 0", "40000")
         self.hwmon(3, "k10temp", "Tctl", "65000")
         self.assertEqual(sensors.cpu_temp(mock.Mock(), Path(self.temp.name)),
-                         (65, "k10temp/Tctl", "sysfs_hwmon"))
+                         (65, "k10temp/Tctl", "ok"))
 
     def test_lm_sensors_fallback_is_ranked_and_limited_to_cpu(self):
         output = json.dumps({"nct6775-isa": {"CPUTIN": {"temp1_input": 20}},
                              "k10temp-pci": {"Tctl": {"temp1_input": 68},
                                             "Tdie": {"temp2_input": 200}}})
         self.assertEqual(sensors.cpu_temp(lambda _: output, Path(self.temp.name)),
-                         (68, "k10temp-pci/Tctl", "lm_sensors"))
+                         (68, "k10temp-pci/Tctl", "ok"))
         self.assertEqual(sensors.cpu_temp(lambda _: "[]", Path(self.temp.name)),
                          (None, None, "unavailable"))
         self.assertEqual(sensors.cpu_temp(lambda _: "{", Path(self.temp.name)),
@@ -93,9 +93,15 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(telemetry.normalize_gpu_value("[Not Supported]"), "")
 
     def test_helper_valid_and_invalid_responses(self):
-        program = "import sys; print('{\"value_c\":65,\"sensor\":\"CPU/Tctl\",\"status\":\"ok\"}', flush=True); sys.stdin.read()"
+        program = (
+            "import sys\n"
+            "for line in sys.stdin:\n"
+            "    if line.strip() == 'sample':\n"
+            "        print('{\"value_c\":65,\"sensor\":\"CPU/Tctl\",\"status\":\"ok\"}', flush=True)"
+        )
         helper = telemetry.TemperatureHelper([sys.executable, "-u", "-c", program])
         self.addCleanup(helper.close)
+        self.assertEqual(helper.sample(), (65, "CPU/Tctl", "ok"))
         self.assertEqual(helper.sample(), (65, "CPU/Tctl", "ok"))
 
     def test_partial_response_times_out_and_disables_helper(self):

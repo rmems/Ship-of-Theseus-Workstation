@@ -16,6 +16,7 @@ Run from the repo root. "Verified" means it ran successfully in a fresh checkout
 | `scripts/theseus-report --help` | verified |
 | `python3 -m unittest -v tests/test_theseus_provenance.py tests/test_theseus_provenance_policy.py tests/test_theseus_provenance_schema.py` | verified (47 tests) |
 | `scripts/theseus-provenance --help` | verified |
+| `python3 -m unittest -v tests/test_capture_telemetry.py` | verified (CI `system-report.yml`) |
 | `shellcheck scripts/*.sh` | verified (ShellCheck 0.11.0, exit 0) |
 | `scripts/theseus-report collect`; `scripts/theseus-provenance collect` | not run (reads the live host and writes under `benchmarks/`) |
 | `scripts/theseus-report validate <report>`; `scripts/theseus-provenance validate <manifest>` | not run (read an existing collected file and do not probe the host; no collected file is committed, and the validation logic is covered by the unittest rows above) |

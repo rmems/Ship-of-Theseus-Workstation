@@ -29,6 +29,7 @@ def windows_cpu():
 
 
 def sample_cpu():
+    """Return aggregate and idle CPU jiffies for utilization deltas."""
     if platform.system() == "Windows":
         return windows_cpu()
     try:
@@ -57,6 +58,7 @@ def parse_memory(lines):
 
 
 def memory():
+    """Return MemTotal and MemAvailable in bytes when the platform exposes them."""
     if platform.system() == "Windows":
         return windows_memory()
     try:
@@ -66,6 +68,7 @@ def memory():
 
 
 def cpu_model():
+    """Return a human-readable CPU model string when available."""
     if platform.system() == "Windows":
         return os.environ.get("PROCESSOR_IDENTIFIER")
     try:
@@ -82,6 +85,7 @@ def linux_cpu_model(lines):
 
 
 def sensor_rank(label):
+    """Rank CPU temperature sensor labels with Tctl/Tdie preferred."""
     name = label.replace(" ", "").replace("/", "").lower()
     if "tctltdie" in name:
         return 0
@@ -108,12 +112,13 @@ def hwmon_candidate(path):
         return None
 
 
-def choose_temperature(candidates, source):
+def choose_temperature(candidates):
+    """Return the best-ranked finite temperature reading and a collection status."""
     for rank, label, value in sorted(candidates):
         if rank >= 99:
             continue
         if math.isfinite(value) and 0 < value <= 125:
-            return value, label, source
+            return value, label, "ok"
     return None
 
 
@@ -149,14 +154,15 @@ def lm_temperature(command):
     if not output:
         return None
     try:
-        return choose_temperature(lm_candidates(output), "lm_sensors")
+        return choose_temperature(lm_candidates(output))
     except (ValueError, TypeError):
         return None
 
 
 def cpu_temp(command, root=Path("/sys/class/hwmon")):
+    """Read CPU temperature from hwmon or lm_sensors with ranked sensor selection."""
     candidates = filter(None, (hwmon_candidate(path) for path in root.glob("hwmon*/temp*_input")))
-    result = choose_temperature(candidates, "sysfs_hwmon")
+    result = choose_temperature(candidates)
     if result is not None:
         return result
     return lm_temperature(command) or (None, None, "unavailable")
