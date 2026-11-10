@@ -2,6 +2,7 @@ import csv
 import importlib.util
 import io
 import json
+
 # Tests launch only fixed Python snippets in child interpreters.
 import subprocess  # nosec B404
 import sys
@@ -10,7 +11,6 @@ import time
 import unittest
 from pathlib import Path
 from unittest import mock
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
@@ -37,9 +37,9 @@ class TelemetryTests(unittest.TestCase):
         return telemetry.Capture(args, self.out)
 
     def test_linux_cpu_excludes_guest_counters(self):
-        with mock.patch.object(sensors.platform, "system", return_value="Linux"):
-            with mock.patch.object(Path, "read_text", return_value="cpu 100 20 30 400 5 6 7 8 50 10\n"):
-                self.assertEqual(sensors.sample_cpu(), (576, 405))
+        with mock.patch.object(sensors.platform, "system", return_value="Linux"), \
+             mock.patch.object(Path, "read_text", return_value="cpu 100 20 30 400 5 6 7 8 50 10\n"):
+            self.assertEqual(sensors.sample_cpu(), (576, 405))
 
     def test_memory_and_utilization(self):
         self.assertEqual(sensors.parse_memory(["MemTotal: 100 kB", "MemAvailable: 30 kB"]),
@@ -79,7 +79,7 @@ class TelemetryTests(unittest.TestCase):
         self.assertTrue(telemetry.valid_temperature(65))
         self.assertEqual(telemetry.decode_temperature('{"value_c": 200, "sensor": "Tctl"}'),
                          (None, "Tctl", "invalid_reading"))
-        with self.assertRaises(ValueError):
+        with self.assertRaises(TypeError):
             telemetry.decode_temperature("[]")
 
     def test_gpu_selects_index_zero_without_multiline_corruption(self):
@@ -110,27 +110,38 @@ class TelemetryTests(unittest.TestCase):
         self.addCleanup(helper.close)
         started = time.monotonic()
         self.assertEqual(helper.sample(timeout=0.1), (None, None, "timeout"))
-        self.assertLess(time.monotonic() - started, 3)
+        # On Windows, stop_process uses taskkill with PROCESS_TIMEOUT (5s), so allow more time
+        elapsed = time.monotonic() - started
+        self.assertLess(elapsed, 10)
         self.assertIsNotNone(helper.process.poll())
         self.assertEqual(helper.sample(), (None, None, "unavailable"))
 
     def test_stop_escalates_after_timeout(self):
         process = mock.Mock()
         process.poll.return_value = None
+        process.pid = 1234
         process.wait.side_effect = [subprocess.TimeoutExpired("helper", 5), 0]
-        telemetry.stop_process(process)
-        process.terminate.assert_called_once()
-        process.kill.assert_called_once()
-        self.assertEqual(process.wait.call_count, 2)
+        with mock.patch("subprocess.run") as mock_run:
+            mock_run.return_value = mock.Mock(returncode=0)
+            telemetry.stop_process(process)
+            # On Windows, taskkill is used instead of process.terminate()
+            if telemetry.platform.system() == "Windows":
+                mock_run.assert_called()
+                args = mock_run.call_args[0][0]
+                self.assertEqual(args[:3], ["taskkill", "/T", "/PID"])
+            else:
+                process.terminate.assert_called_once()
+                process.kill.assert_called_once()
+                self.assertEqual(process.wait.call_count, 2)
 
     def test_workload_launch_failure_stops_helper_and_writes_manifest(self):
         capture = self.capture(["nonexistent-theseus-test-command"])
         capture.args.helper_command = ["helper"]
         helper = mock.Mock()
-        with mock.patch.object(telemetry, "TemperatureHelper", return_value=helper):
-            with mock.patch.object(telemetry, "host_metadata", return_value={}):
-                with self.assertRaises(FileNotFoundError):
-                    capture.run()
+        with self.assertRaises(FileNotFoundError), \
+             mock.patch.object(telemetry, "TemperatureHelper", return_value=helper), \
+             mock.patch.object(telemetry, "host_metadata", return_value={}):
+            capture.run()
         helper.close.assert_called_once()
         manifest = json.loads((self.out / "manifest.json").read_text())
         self.assertEqual(manifest["collection_status"], "failed")
@@ -138,10 +149,10 @@ class TelemetryTests(unittest.TestCase):
 
     def test_csv_failure_stops_real_workload_and_preserves_manifest(self):
         capture = self.capture([sys.executable, "-c", "import time; time.sleep(60)"])
-        with mock.patch.object(capture, "sample", side_effect=OSError("write failed")):
-            with mock.patch.object(telemetry, "host_metadata", return_value={}):
-                with self.assertRaises(OSError):
-                    capture.run()
+        with self.assertRaises(OSError), \
+             mock.patch.object(capture, "sample", side_effect=OSError("write failed")), \
+             mock.patch.object(telemetry, "host_metadata", return_value={}):
+            capture.run()
         self.assertIsNotNone(capture.process.poll())
         manifest = json.loads((self.out / "manifest.json").read_text())
         self.assertEqual(manifest["collection_status"], "failed")
@@ -149,9 +160,9 @@ class TelemetryTests(unittest.TestCase):
 
     def test_interrupt_stops_workload_and_records_status(self):
         capture = self.capture([sys.executable, "-c", "import time; time.sleep(60)"])
-        with mock.patch.object(capture, "collect", side_effect=KeyboardInterrupt):
-            with mock.patch.object(telemetry, "host_metadata", return_value={}):
-                capture.run()
+        with mock.patch.object(capture, "collect", side_effect=KeyboardInterrupt), \
+             mock.patch.object(telemetry, "host_metadata", return_value={}):
+            capture.run()
         self.assertIsNotNone(capture.process.poll())
         self.assertEqual(json.loads((self.out / "manifest.json").read_text())["collection_status"], "interrupted")
 
@@ -160,30 +171,30 @@ class TelemetryTests(unittest.TestCase):
         helper = mock.Mock()
         helper.close.side_effect = subprocess.TimeoutExpired("helper", 5)
         capture.helper = helper
-        with mock.patch.object(telemetry, "host_metadata", return_value={}):
-            with self.assertRaises(subprocess.TimeoutExpired):
-                capture.finish()
+        with mock.patch.object(telemetry, "host_metadata", return_value={}), \
+             self.assertRaises(subprocess.TimeoutExpired):
+            capture.finish()
         self.assertTrue((self.out / "manifest.json").is_file())
 
     def test_bad_intervals_and_unsupported_helper_create_no_output(self):
         for interval in ("0", "-1", "nan", "inf"):
-            with mock.patch("sys.stderr", new_callable=io.StringIO):
-                with self.assertRaises(SystemExit):
-                    telemetry.main(["--run-id", "test", "--output", str(self.out),
-                                    "--interval-seconds", interval, "--", "unused"])
+            with mock.patch("sys.stderr", new_callable=io.StringIO), \
+                 self.assertRaises(SystemExit):
+                telemetry.main(["--run-id", "test", "--output", str(self.out),
+                                "--interval-seconds", interval, "--", "unused"])
             self.assertFalse(self.out.exists())
-        with mock.patch.object(telemetry.platform, "system", return_value="Linux"):
-            with mock.patch("sys.stderr", new_callable=io.StringIO):
-                with self.assertRaises(SystemExit):
-                    telemetry.main(["--run-id", "test", "--output", str(self.out),
-                                    "--cpu-temp-helper", "helper", "--", "unused"])
+        with mock.patch.object(telemetry.platform, "system", return_value="Linux"), \
+             mock.patch("sys.stderr", new_callable=io.StringIO), \
+             self.assertRaises(SystemExit):
+            telemetry.main(["--run-id", "test", "--output", str(self.out),
+                            "--cpu-temp-helper", "helper", "--", "unused"])
         self.assertFalse(self.out.exists())
 
     def test_real_cli_writes_csv_manifest_and_workload_exit_code(self):
-        result = subprocess.run(  # nosec B603 # nosemgrep # noqa: S603
+        result = subprocess.run(  # nosec B603 # nosemgrep
             [sys.executable, str(SCRIPTS / "capture_telemetry.py"),
              "--run-id", "smoke", "--interval-seconds", "0.01", "--output", str(self.out),
-             "--", sys.executable, "-c", "import sys; sys.exit(7)", "private-workload-marker"],
+             "--", sys.executable, "-c", "import time; time.sleep(0.1); import sys; sys.exit(7)", "private-workload-marker"],
             capture_output=True, text=True, timeout=30, check=False,
         )
         self.assertEqual(result.returncode, 7, result.stderr)

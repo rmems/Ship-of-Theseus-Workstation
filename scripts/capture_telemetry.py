@@ -13,6 +13,7 @@ import os
 import platform
 import queue
 import shutil
+
 # Required by this local workload runner.
 import signal
 import subprocess  # nosec B404
@@ -22,7 +23,6 @@ import time
 from pathlib import Path
 
 from telemetry_sensors import cpu_model, cpu_temp, memory, sample_cpu
-
 
 FIELDS = ["timestamp_utc", "elapsed_seconds", "run_id", "gpu_temperature_c",
           "gpu_power_w", "gpu_utilization_pct", "gpu_memory_utilization_pct",
@@ -40,7 +40,7 @@ def command(args, timeout=PROCESS_TIMEOUT):
     """Run a fixed local probe command and return stripped stdout, or None on failure."""
     try:
         # Fixed local probes only; no shell expansion or remote input.
-        result = subprocess.run(args, shell=False, text=True, capture_output=True,  # nosec B603 # nosemgrep # noqa: S603
+        result = subprocess.run(args, shell=False, text=True, capture_output=True,  # nosec B603 # nosemgrep
                                 timeout=timeout, check=True)
         return result.stdout.strip()
     except (OSError, subprocess.SubprocessError):
@@ -52,7 +52,33 @@ def launch(args, **kwargs):
     if platform.system() != "Windows" and "start_new_session" not in kwargs:
         kwargs["start_new_session"] = True
     # Executing operator-supplied argv is the purpose of this local CLI.
-    return subprocess.Popen(args, shell=False, **kwargs)  # nosec B603 # nosemgrep # noqa: S603
+    return subprocess.Popen(args, shell=False, **kwargs)  # nosec B603 # nosemgrep
+
+
+def _terminate_process(process):
+    """Send termination signal to process and its children."""
+    if platform.system() == "Windows":
+        subprocess.run(  # nosec B603 B607 # nosemgrep
+            ["taskkill", "/T", "/PID", str(process.pid)],
+            capture_output=True, timeout=PROCESS_TIMEOUT, check=False,
+        )
+    elif isinstance(process.pid, int):
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    else:
+        process.terminate()
+
+
+def _kill_process(process):
+    """Send kill signal to process and its children."""
+    if platform.system() != "Windows" and isinstance(process.pid, int):
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    else:
+        process.kill()
+
+
+def _wait_process(process):
+    """Wait for process to exit with timeout."""
+    process.wait(timeout=PROCESS_TIMEOUT)
 
 
 def stop_process(process):
@@ -60,28 +86,17 @@ def stop_process(process):
     if process is None or process.poll() is not None:
         return
     try:
-        if platform.system() == "Windows":
-            subprocess.run(  # nosec B603 # nosemgrep # noqa: S603
-                ["taskkill", "/T", "/PID", str(process.pid)],
-                capture_output=True, timeout=PROCESS_TIMEOUT, check=False,
-            )
-        elif isinstance(process.pid, int):
-            os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-        else:
-            process.terminate()
+        _terminate_process(process)
     except (OSError, ProcessLookupError, AttributeError, TypeError):
         process.terminate()
     try:
-        process.wait(timeout=PROCESS_TIMEOUT)
+        _wait_process(process)
     except subprocess.TimeoutExpired:
         try:
-            if platform.system() != "Windows" and isinstance(process.pid, int):
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-            else:
-                process.kill()
+            _kill_process(process)
         except (OSError, ProcessLookupError, AttributeError, TypeError):
             process.kill()
-        process.wait(timeout=PROCESS_TIMEOUT)
+        _wait_process(process)
 
 
 def read_response(stream, responses):
@@ -96,7 +111,7 @@ def decode_temperature(line):
     """Parse a helper JSON line into temperature, sensor label, and status fields."""
     response = json.loads(line)
     if not isinstance(response, dict):
-        raise ValueError("helper response must be an object")
+        raise TypeError("helper response must be an object")
     value = response.get("value_c")
     if value is not None and not valid_temperature(value):
         return None, response.get("sensor"), "invalid_reading"
@@ -217,7 +232,7 @@ class Capture:
     def __init__(self, args, out):
         self.args = args
         self.out = out
-        self.started = dt.datetime.now(dt.timezone.utc)
+        self.started = dt.datetime.now(dt.UTC)
         self.start_mono = time.monotonic()
         self.gpu_available = shutil.which("nvidia-smi") is not None
         self.helper = None
@@ -237,7 +252,7 @@ class Capture:
         mem = memory()
         temperature, sensor, temperature_status = self.temperature()
         elapsed = round(time.monotonic() - self.start_mono, 3)
-        values = [dt.datetime.now(dt.timezone.utc).isoformat(),
+        values = [dt.datetime.now(dt.UTC).isoformat(),
                   elapsed, self.args.run_id, *gpu_values,
                   utilization, mem.get("MemTotal"), mem.get("MemAvailable"),
                   temperature, sensor, gpu_status, temperature_status]
@@ -287,17 +302,26 @@ class Capture:
     def request_stop(self):
         self._stop_requested = True
 
+    def _setup_signal_handler(self):
+        """Install SIGTERM handler if available."""
+        if not hasattr(signal, "SIGTERM"):
+            return None
+        return signal.signal(signal.SIGTERM, self._handle_stop_signal)
+
+    def _start_helper(self):
+        """Start the temperature helper if configured."""
+        if not self.args.helper_command:
+            return
+        try:
+            self.helper = TemperatureHelper(self.args.helper_command)
+        except OSError:
+            self.helper = None
+
     def run(self):
         """Run the workload and write telemetry until it exits or collection stops."""
-        previous_handler = None
-        if hasattr(signal, "SIGTERM"):
-            previous_handler = signal.signal(signal.SIGTERM, self._handle_stop_signal)
+        previous_handler = self._setup_signal_handler()
         try:
-            if self.args.helper_command:
-                try:
-                    self.helper = TemperatureHelper(self.args.helper_command)
-                except OSError:
-                    self.helper = None
+            self._start_helper()
             self.previous_cpu = sample_cpu()
             self.process = launch(self.args.command)
             self.exit_code = self.collect()
@@ -336,7 +360,7 @@ class Capture:
         manifest = {
             "schema_version": 1, "run_id": self.args.run_id,
             "started_at_utc": self.started.isoformat(),
-            "ended_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "ended_at_utc": dt.datetime.now(dt.UTC).isoformat(),
             "elapsed_seconds": round(time.monotonic() - self.start_mono, 3),
             "sample_interval_seconds": self.args.interval_seconds,
             "sample_count": self.rows, "workload_exit_code": self.exit_code,
