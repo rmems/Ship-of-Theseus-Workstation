@@ -44,6 +44,7 @@ python -m unittest -v tests/test_theseus_report.py
 scripts/theseus-report --help
 python -m unittest -v tests/test_theseus_provenance.py tests/test_theseus_provenance_policy.py tests/test_theseus_provenance_schema.py
 scripts/theseus-provenance --help
+python -m unittest -v tests/test_capture_telemetry.py
 ```
 
 ## Conventions visible in the repo
