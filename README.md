@@ -57,8 +57,8 @@ This machine is especially important to my **early-career independent portfolio*
 | **Motherboard** | ASUS ProArt X870E-CREATOR WIFI | AM5 workstation platform, PCIe 5.0 expansion, multi-M.2 storage, and high-bandwidth connectivity |
 | **Memory** | 64 GB total: 2 × 32 GB G.SKILL Trident Z5 Neo RGB, DDR5-6000, CL30-40-40-96, AMD EXPO | Dataset processing, parallel development workloads, simulation, and local model work |
 | **Primary storage** | 2 TB Crucial T700 PCIe 5.0 NVMe | High-throughput working storage for models, build artifacts, and experiment data |
-| **Secondary / backup storage** | 2 TB Fanxiang PCIe 4.0 NVMe SSD | Secondary workspace, overflow storage, backups, and staging |
-| **Operating system** | Fedora Linux | Primary research, development, automation, and self-hosted CI environment |
+| **Secondary storage** | 2 TB Fanxiang PCIe 4.0 NVMe SSD | Windows 11 system drive — the Windows half of the dual-boot (Disk 1); WSL2 provides the Linux environment under Windows |
+| **Operating system** | Fedora Linux + Windows 11 (dual-boot) | Fedora (Crucial T700, Disk 0) is the primary research, development, automation, and self-hosted CI environment; Windows 11 (Fanxiang, Disk 1) with WSL2; GRUB via os-prober, Fedora default |
 
 The memory kit is G.SKILL `F5-6000J3040G32GX2-TZ5NR`: 64 GB total, 32 GB × 2, DDR5-6000, CL30-40-40-96, 1.40 V, with AMD EXPO.
 
